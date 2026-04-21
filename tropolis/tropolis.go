@@ -18,7 +18,7 @@ func Start() {
 
 	// Set up upgrader
 	rh := &roomHandler{
-		em: ee.New[uint64, *Sub](&ee.Config{
+		em: ee.New[int32, *Sub](&ee.Config{
 			BucketNum:  128,
 			BucketSize: 128,
 		}),
@@ -26,11 +26,12 @@ func Start() {
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
 		ParallelEnabled: true,
 		Recovery:        gws.Recovery,
+		SubProtocols:    []string{"binary"}, // If unspecified, Chromium instantly disconnects
 
 		// In the future, this should check tokens probably
 		// (Either here or in [roomHandler.OnOpen])
 		Authorize: func(r *http.Request, session gws.SessionStorage) bool {
-			slog.Info("authorizing connection", slog.Any("roomID", r.URL.Query().Get("id")))
+			slog.Info("authorizing connection", "roomID", r.URL.Query().Get("id"))
 
 			// Authorize every connection
 			return true
