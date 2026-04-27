@@ -1,6 +1,8 @@
 package room
 
 import (
+	"sync"
+
 	ee "github.com/lxzan/event_emitter"
 	"github.com/lxzan/gws"
 	pt "github.com/minishd/minnatropolis/tropolis/protocol"
@@ -8,6 +10,8 @@ import (
 
 // Data associated with a room client
 type clientData struct {
+	mu sync.RWMutex
+
 	cID  int32
 	name string
 

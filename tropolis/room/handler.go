@@ -34,13 +34,13 @@ func NewHandler(guardPSK []byte) *Handler {
 	}
 }
 
-func (h *Handler) Subscribe(s *User, topic string) {
+func (h *Handler) subscribeTopic(s *User, topic string) {
 	h.em.Subscribe(s, topic, func(msg any) {
 		bc := msg.(*gws.Broadcaster)
 		_ = bc.Broadcast(s.Conn())
 	})
 }
-func (h *Handler) Publish(topic string, msg []byte) {
+func (h *Handler) publishTopic(topic string, msg []byte) {
 	bc := gws.NewBroadcaster(gws.OpcodeBinary, msg)
 	defer bc.Close()
 	h.em.Publish(topic, bc)
@@ -121,12 +121,15 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 	// Verify counter
 	// ..
 	count := binary.BigEndian.Uint32(m[4:8])
+	d.mu.Lock()
 	if count <= d.guardCount {
 		// The sent count should only increase
+		d.mu.Unlock()
 		slog.Warn("declined count")
 		return
 	}
 	d.guardCount = count
+	d.mu.Unlock()
 
 	// Message handling
 	// ..
