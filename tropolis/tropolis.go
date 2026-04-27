@@ -1,14 +1,15 @@
 package tropolis
 
 import (
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"os"
-	"strconv"
 
 	"github.com/joho/godotenv"
-	ee "github.com/lxzan/event_emitter"
 	"github.com/lxzan/gws"
+	"github.com/minishd/minnatropolis/tropolis/protocol"
+	"github.com/minishd/minnatropolis/tropolis/room"
 )
 
 func Start() {
@@ -16,45 +17,19 @@ func Start() {
 
 	// Load env
 	listenOn := os.Getenv("LISTEN_ON")
+	guardPSK, err := hex.DecodeString(os.Getenv("GUARD_PSK"))
+	if err != nil {
+		panic(err)
+	}
 
 	// Set up upgrader
-	rh := &roomHandler{
-		em: ee.New[int32, *Sub](&ee.Config{
-			BucketNum:  128,
-			BucketSize: 128,
-		}),
-	}
+	rh := room.NewHandler(guardPSK)
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
 		ParallelEnabled: true,
 		Recovery:        gws.Recovery,
 		SubProtocols:    []string{"binary"}, // If unspecified, Chromium instantly disconnects
 
-		// In the future, this should check tokens probably
-		// (Either here or in [roomHandler.OnOpen])
-		Authorize: func(r *http.Request, session gws.SessionStorage) bool {
-			// Get room ID
-			roomID, err := strconv.Atoi(r.URL.Query().Get("id"))
-			if err != nil {
-				return false
-			}
-			if roomID < 1 || roomID > 5000 {
-				return false
-			}
-
-			// Get token
-			token := r.URL.Query().Get("token")
-
-			// Set up data
-			session.Store("cd", clientData{
-				cID:      cIDCounter.Add(1),
-				name:     token, // Temporary
-				guardKey: randomString(12),
-				mapID:    int32(roomID),
-			})
-
-			// Authorize connection
-			return true
-		},
+		Authorize: room.Authorize,
 	})
 
 	// Set routes
@@ -70,7 +45,7 @@ func Start() {
 	})
 
 	// Start server
-	registerAllPackets()
+	protocol.RegisterAllPackets()
 	slog.Info("starting")
 	http.ListenAndServe(listenOn, nil)
 }
