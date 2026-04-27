@@ -2,7 +2,6 @@ package tropolis
 
 import (
 	"log/slog"
-	"math/rand/v2"
 	"sync/atomic"
 
 	"github.com/google/uuid"
@@ -12,7 +11,14 @@ import (
 
 // Data associated with a room client
 type clientData struct {
-	cID int32
+	cID  int32
+	name string
+
+	guardKey string
+
+	mapID  int32
+	x, y   int32
+	facing int32
 }
 
 // Implements [ee] subscriber interface onto
@@ -69,25 +75,20 @@ func onWriteError(err error) {
 var cIDCounter atomic.Int32
 
 func (h *roomHandler) OnOpen(c *gws.Conn) {
-	// Set up data
-	c.Session().Store("cd", clientData{
-		cID: cIDCounter.Add(1),
-	})
-
 	s := NewSub(c)
 	slog.Info("open", "cID", s.GetSubscriberID())
 
-	// Send a placeholder sync
-	sPkt := syncPlayerDataS2C_s{
-		HostID:     s.GetData().cID,
-		Key:        rand.Int32(),
-		UUID:       uuid.NewString(),
-		Rank:       123,
-		AccountBin: 1,
-		Badge:      "abc",
-		Medals:     [5]int32{},
+	// Send initial packets
+	sPkt := syncPlayerDataS2C{
+		HostID: s.GetData().cID,
+		Key:    s.GetData().guardKey,
+		UUID:   uuid.NewString(),
 	}
 	c.WriteAsync(gws.OpcodeBinary, serialize(sPkt), onWriteError)
+	riPkt := roomInfoS2C{
+		MapID: s.GetData().mapID,
+	}
+	c.WriteAsync(gws.OpcodeBinary, serialize(riPkt), onWriteError)
 
 	// Subscribe to default topics
 	Subscribe(h.em, s, topicChat)

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 	ee "github.com/lxzan/event_emitter"
@@ -31,9 +32,27 @@ func Start() {
 		// In the future, this should check tokens probably
 		// (Either here or in [roomHandler.OnOpen])
 		Authorize: func(r *http.Request, session gws.SessionStorage) bool {
-			slog.Info("authorizing connection", "roomID", r.URL.Query().Get("id"))
+			// Get room ID
+			roomID, err := strconv.Atoi(r.URL.Query().Get("id"))
+			if err != nil {
+				return false
+			}
+			if roomID < 1 || roomID > 5000 {
+				return false
+			}
 
-			// Authorize every connection
+			// Get token
+			token := r.URL.Query().Get("token")
+
+			// Set up data
+			session.Store("cd", clientData{
+				cID:      cIDCounter.Add(1),
+				name:     token, // Temporary
+				guardKey: randomString(12),
+				mapID:    int32(roomID),
+			})
+
+			// Authorize connection
 			return true
 		},
 	})
@@ -51,6 +70,7 @@ func Start() {
 	})
 
 	// Start server
+	registerAllPackets()
 	slog.Info("starting")
 	http.ListenAndServe(listenOn, nil)
 }
