@@ -25,7 +25,7 @@ func Start() {
 	// Set up upgrader
 	rh := room.NewHandler(guardPSK)
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
-		ParallelEnabled: true,
+		ParallelEnabled: false, // Don't process each connection's messages in parallel
 		Recovery:        gws.Recovery,
 		SubProtocols:    []string{"binary"}, // If unspecified, Chromium instantly disconnects
 

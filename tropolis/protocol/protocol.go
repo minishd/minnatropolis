@@ -50,9 +50,23 @@ func DeserializeOne(msgBytes []byte) (msg any, err error) {
 			var partInt int64
 			partInt, err = strconv.ParseInt(part, 10, fieldValue.Type().Bits())
 			if err != nil {
+				// Invalid integer
 				return
 			}
 			fieldValue.SetInt(partInt)
+
+		case bool:
+			partBool := false
+			switch part {
+			case "0":
+				break
+			case "1":
+				partBool = true
+			default:
+				// Invalid boolean
+				return
+			}
+			fieldValue.SetBool(partBool)
 
 		case int, uint, uintptr:
 			// Only allow ints of specified bitness
@@ -123,6 +137,13 @@ func SerializeOne(msg any) (msgBytes []byte) {
 					msgBytes = append(msgBytes, paramDelim...)
 				}
 			}
+
+		case bool:
+			digit := '0'
+			if field {
+				digit = '1'
+			}
+			msgBytes = append(msgBytes, byte(digit))
 
 		case int, uint, uintptr:
 			// We want sizes to be specified

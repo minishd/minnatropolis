@@ -34,21 +34,60 @@ func NewHandler(guardPSK []byte) *Handler {
 	}
 }
 
-func (h *Handler) subscribeTopic(s *User, topic string) {
+// Wrapper for pub/sub raw websocket message.
+type topicMessage struct {
+	excludeID int32
+	bc        *gws.Broadcaster
+}
+
+// Add a client to a websocket message topic.
+func (h *Handler) subscribeRawTopic(s *User, topic string) {
 	h.em.Subscribe(s, topic, func(msg any) {
-		bc := msg.(*gws.Broadcaster)
-		_ = bc.Broadcast(s.Conn())
+		tm := msg.(*topicMessage)
+
+		// Don't send if excluded
+		if s.GetSubscriberID() == tm.excludeID {
+			return
+		}
+
+		// Send the message
+		_ = tm.bc.Broadcast(s.Conn())
 	})
 }
-func (h *Handler) publishTopic(topic string, msg []byte) {
+
+// Publish a websocket message to all clients of a topic.
+func (h *Handler) publishRawTopic(topic string, msg []byte, excludeID int32) {
+	// Set up broadcast wrapper
 	bc := gws.NewBroadcaster(gws.OpcodeBinary, msg)
+	tm := &topicMessage{
+		excludeID: excludeID,
+		bc:        bc,
+	}
 	defer bc.Close()
-	h.em.Publish(topic, bc)
+
+	// Publish
+	h.em.Publish(topic, tm)
 }
 
 // Increments by 1 for each
 // connection opened
 var cIDCounter atomic.Int32
+
+// The values that clients will assume
+// if they aren't specified.
+//
+// Used so our assumptions match theirs
+// and we don't send unnecessary updates.
+const (
+	defaultXY     = -1
+	defaultFacing = 2
+	defaultSpeed  = 4
+
+	defaultTransparency = 0
+	defaultSprite       = ""
+	defaultSpriteIndex  = -1
+	defaultSysName      = ""
+)
 
 // In the future, this should check tokens probably
 // (Either here or in [Handler.OnOpen])
@@ -67,14 +106,60 @@ func Authorize(r *http.Request, session gws.SessionStorage) bool {
 
 	// Set up data
 	session.Store("cd", &clientData{
-		cID:      cIDCounter.Add(1),
-		name:     token, // Temporary
-		guardKey: rand.Uint32(),
-		roomID:   int32(roomID),
+		cID:         cIDCounter.Add(1),
+		name:        token,            // Temporary
+		accountUUID: uuid.NewString(), // Temporary
+		guardKey:    rand.Uint32(),
+
+		roomID: int32(roomID),
+		x:      defaultXY, y: defaultXY,
+		facing: defaultFacing,
+		speed:  defaultSpeed,
+
+		transparency: defaultTransparency,
+		hidden:       false,
+		sprite:       defaultSprite,
+		spriteIndex:  defaultSpriteIndex,
+		sysName:      defaultSysName,
 	})
 
 	// Authorize connection
 	return true
+}
+
+func roomTopic(roomID int32) string {
+	return "room-" + strconv.FormatInt(int64(roomID), 10)
+}
+
+// Send a message to everyone else in the room.
+func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
+	msgsBytes := pt.Serialize(msgs...)
+	h.publishRawTopic(roomTopic(d.roomID), msgsBytes, d.cID)
+}
+
+// Change from one room to another.
+func (h *Handler) changeRoom(u *User, newID int32) {
+	d := u.GetData()
+
+	// If the two rooms are different,
+	// we need to handle leaving the other room
+	if newID != d.roomID {
+		// Unsubscribe from the topic
+		h.em.UnSubscribe(u, roomTopic(d.roomID))
+		// Tell other players we left
+		h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})
+	}
+
+	// Introduce to new room
+	d.roomID = newID
+	u.Send(pt.RoomInfoS2C{RoomID: d.roomID})
+	h.subscribeRawTopic(u, roomTopic(d.roomID))
+
+	// Tell us that everyone is here
+	// ...
+
+	// Tell everyone else we're here
+	h.shareToRoom(d, u.GetIntroMessages()...)
 }
 
 func (h *Handler) OnOpen(c *gws.Conn) {
@@ -84,10 +169,61 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	// Send initial packet
 	d := s.GetData()
 	s.Send(pt.SyncPlayerDataS2C{
-		HostID: d.cID,
-		Key:    d.guardKey,
-		UUID:   uuid.NewString(),
+		HostID:     d.cID,
+		Key:        d.guardKey,
+		UUID:       d.accountUUID,
+		Rank:       d.rank,
+		IsLoggedIn: d.loggedIn,
+		Badge:      d.badge,
+		Medals:     d.medals,
 	})
+
+	// Add to room
+	h.changeRoom(s, d.roomID)
+}
+
+func (h *Handler) processMessage(u *User, m any) {
+	d := u.GetData()
+
+	switch m := m.(type) {
+
+	case pt.SwitchRoomC2S:
+		slog.Info("change to", "room", m.RoomID)
+		h.changeRoom(u, m.RoomID)
+
+	case pt.MainPlayerPosC2S:
+		d.x = m.X
+		d.y = m.Y
+		h.shareToRoom(d, pt.MainPlayerPosS2C{ID: d.cID, X: d.x, Y: d.y})
+
+	case pt.SpeedC2S:
+		d.speed = m.Speed
+		h.shareToRoom(d, pt.SpeedS2C{ID: d.cID, Speed: d.speed})
+
+	case pt.SpriteC2S:
+		d.sprite = m.Name
+		d.spriteIndex = m.Index
+		h.shareToRoom(d, pt.SpriteS2C{ID: d.cID, Name: d.sprite, Index: d.spriteIndex})
+
+	case pt.FacingC2S:
+		d.facing = m.Direction
+		h.shareToRoom(d, pt.FacingS2C{ID: d.cID, Direction: d.facing})
+
+	case pt.HiddenC2S:
+		d.hidden = m.Hidden
+		h.shareToRoom(d, pt.HiddenS2C{ID: d.cID, Hidden: d.hidden})
+
+	case pt.SysNameC2S:
+		d.sysName = m.Name
+		h.shareToRoom(d, pt.SysNameS2C{ID: d.cID, Name: d.sysName})
+
+	case pt.TransparencyC2S:
+		d.transparency = m.Transparency
+		h.shareToRoom(d, pt.TransparencyS2C{ID: d.cID, Transparency: d.transparency})
+
+	default:
+		slog.Info("unhandled", "msg", m)
+	}
 }
 
 func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
@@ -114,28 +250,24 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 
 	if !bytes.Equal(hash.Sum(nil)[:4], m[:4]) {
 		// Invalid HMAC
-		slog.Warn("declined HMAC")
 		return
 	}
 
 	// Verify counter
 	// ..
 	count := binary.BigEndian.Uint32(m[4:8])
-	d.mu.Lock()
 	if count <= d.guardCount {
 		// The sent count should only increase
-		d.mu.Unlock()
-		slog.Warn("declined count")
+		slog.Warn("declined count", "msgs", pt.Deserialize(m[8:]))
 		return
 	}
 	d.guardCount = count
-	d.mu.Unlock()
 
 	// Message handling
 	// ..
 	msgs := pt.Deserialize(m[8:])
 	for _, msg := range msgs {
-		slog.Info("received", "msg", msg)
+		h.processMessage(s, msg)
 	}
 }
 

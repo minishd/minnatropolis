@@ -4,12 +4,14 @@ import (
 	"reflect"
 )
 
+// ********** Server -> Client **********
+
 type SyncPlayerDataS2C struct {
 	HostID     int32
 	Key        uint32
 	UUID       string
 	Rank       int32
-	AccountBin int32 // binary
+	IsLoggedIn bool
 	Badge      string
 	Medals     [5]int32
 }
@@ -22,7 +24,7 @@ type ConnectS2C struct {
 	ID         int32
 	UUID       string
 	Rank       int32
-	AccountBin int32 // binary
+	IsLoggedIn bool
 	Badge      string
 	Medals     [5]int32
 }
@@ -30,6 +32,49 @@ type ConnectS2C struct {
 type DisconnectS2C struct {
 	ID int32
 }
+
+type NameS2C struct {
+	ID   int32
+	Name string
+}
+
+type MainPlayerPosS2C struct {
+	ID   int32
+	X, Y int32
+}
+
+type SpriteS2C struct {
+	ID    int32
+	Name  string
+	Index int32
+}
+
+type FacingS2C struct {
+	ID        int32
+	Direction int32
+}
+
+type SpeedS2C struct {
+	ID    int32
+	Speed int32
+}
+
+type HiddenS2C struct {
+	ID     int32
+	Hidden bool
+}
+
+type TransparencyS2C struct {
+	ID           int32
+	Transparency int32
+}
+
+type SysNameS2C struct {
+	ID   int32
+	Name string
+}
+
+// ********** Client -> Server **********
 
 type SwitchRoomC2S struct {
 	RoomID int32
@@ -53,11 +98,15 @@ type FacingC2S struct {
 }
 
 type HiddenC2S struct {
-	HiddenBin int32 // binary
+	Hidden bool
 }
 
 type SysNameC2S struct {
 	Name string
+}
+
+type TransparencyC2S struct {
+	Transparency int32
 }
 
 var (
@@ -79,6 +128,14 @@ func RegisterAllPackets() {
 	registerS2C[RoomInfoS2C]("ri")
 	registerS2C[ConnectS2C]("c")
 	registerS2C[DisconnectS2C]("d")
+	registerS2C[NameS2C]("name")
+	registerS2C[MainPlayerPosS2C]("m")
+	registerS2C[SpriteS2C]("spr")
+	registerS2C[FacingS2C]("f")
+	registerS2C[SpeedS2C]("spd")
+	registerS2C[HiddenS2C]("h")
+	registerS2C[TransparencyS2C]("tr")
+	registerS2C[SysNameS2C]("sys")
 
 	registerC2S[SwitchRoomC2S]("sr")
 	registerC2S[MainPlayerPosC2S]("m")
@@ -87,4 +144,5 @@ func RegisterAllPackets() {
 	registerC2S[FacingC2S]("f")
 	registerC2S[HiddenC2S]("h")
 	registerC2S[SysNameC2S]("sys")
+	registerC2S[TransparencyC2S]("tr")
 }
