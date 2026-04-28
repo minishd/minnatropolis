@@ -280,6 +280,10 @@ func (h *Handler) OnClose(c *gws.Conn, err error) {
 	s := NewUser(c)
 	slog.Info("close", "cID", s.GetSubscriberID())
 
+	// Leave room
+	d := s.GetData()
+	h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})
+
 	// Remove all subscriptions
 	h.em.DestroySub(s)
 }
