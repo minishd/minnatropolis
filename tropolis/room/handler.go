@@ -11,26 +11,23 @@ import (
 	"sync/atomic"
 
 	"github.com/google/uuid"
-	ee "github.com/lxzan/event_emitter"
 	"github.com/lxzan/gws"
 	pt "github.com/minishd/minnatropolis/tropolis/protocol"
+	"github.com/minishd/minnatropolis/tropolis/room/emitter"
 )
 
 // Shared handler for room websocket events
 type Handler struct {
 	guardPSK []byte
 
-	em *ee.EventEmitter[int32, *User]
+	em *emitter.Emitter[int32, *User]
 }
 
 func NewHandler(guardPSK []byte) *Handler {
 	return &Handler{
 		guardPSK: guardPSK,
 
-		em: ee.New[int32, *User](&ee.Config{
-			BucketNum:  128,
-			BucketSize: 128,
-		}),
+		em: emitter.New[int32, *User](),
 	}
 }
 
@@ -42,7 +39,7 @@ type topicMessage struct {
 
 // Add a client to a websocket message topic.
 func (h *Handler) subscribeRawTopic(s *User, topic string) {
-	h.em.Subscribe(s, topic, func(msg any) {
+	h.em.MakeSub(s, topic, func(msg any) {
 		tm := msg.(*topicMessage)
 
 		// Don't send if excluded
@@ -145,7 +142,7 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 	// we need to handle leaving the other room
 	if newID != d.roomID {
 		// Unsubscribe from the topic
-		h.em.UnSubscribe(u, roomTopic(d.roomID))
+		h.em.RemoveSub(u, roomTopic(d.roomID))
 		// Tell other players we left
 		h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})
 	}
@@ -153,10 +150,18 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 	// Introduce to new room
 	d.roomID = newID
 	u.Send(pt.RoomInfoS2C{RoomID: d.roomID})
-	h.subscribeRawTopic(u, roomTopic(d.roomID))
+	topic := roomTopic(d.roomID)
+	h.subscribeRawTopic(u, topic)
 
 	// Tell us that everyone is here
-	// ...
+	var introMsgs []any
+	for _, o := range h.em.GetSubs(topic) {
+		if o.GetSubscriberID() == d.cID {
+			continue
+		}
+		introMsgs = append(introMsgs, o.GetIntroMessages()...)
+	}
+	u.Send(introMsgs...)
 
 	// Tell everyone else we're here
 	h.shareToRoom(d, u.GetIntroMessages()...)
@@ -276,7 +281,7 @@ func (h *Handler) OnClose(c *gws.Conn, err error) {
 	slog.Info("close", "cID", s.GetSubscriberID())
 
 	// Remove all subscriptions
-	h.em.UnSubscribeAll(s)
+	h.em.DestroySub(s)
 }
 
 func (h *Handler) OnPing(c *gws.Conn, payload []byte) {

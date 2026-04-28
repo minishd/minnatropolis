@@ -1,9 +1,9 @@
 package room
 
 import (
-	ee "github.com/lxzan/event_emitter"
 	"github.com/lxzan/gws"
 	pt "github.com/minishd/minnatropolis/tropolis/protocol"
+	"github.com/minishd/minnatropolis/tropolis/room/emitter"
 )
 
 // Data associated with a room client
@@ -40,8 +40,8 @@ type User gws.Conn
 
 func NewUser(c *gws.Conn) *User { return (*User)(c) }
 
-func (u *User) GetMetadata() ee.Metadata { return u.Conn().Session() }
-func (u *User) GetSubscriberID() int32   { return u.GetData().cID }
+func (u *User) GetMetadata() emitter.Metadata { return u.Conn().Session() }
+func (u *User) GetSubscriberID() int32        { return u.GetData().cID }
 
 // Get underlying [gws.Conn].
 func (u *User) Conn() *gws.Conn { return (*gws.Conn)(u) }
