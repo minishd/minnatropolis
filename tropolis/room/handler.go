@@ -226,6 +226,9 @@ func (h *Handler) processMessage(u *User, m any) {
 		d.transparency = m.Transparency
 		h.shareToRoom(d, pt.TransparencyS2C{ID: d.cID, Transparency: d.transparency})
 
+	case pt.SoundEffectC2S:
+		h.shareToRoom(d, pt.SoundEffectS2C{ID: d.cID, Name: m.Name, Volume: m.Volume, Tempo: m.Tempo, Balance: m.Balance})
+
 	default:
 		slog.Info("unhandled", "msg", m)
 	}

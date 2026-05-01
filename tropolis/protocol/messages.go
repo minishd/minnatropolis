@@ -5,6 +5,8 @@ import (
 )
 
 // ********** Server -> Client **********
+// These packets are sent by the server
+// to clients (minnaengine).
 
 type SyncPlayerDataS2C struct {
 	HostID     int32
@@ -74,7 +76,17 @@ type SysNameS2C struct {
 	Name string
 }
 
+type SoundEffectS2C struct {
+	ID      int32
+	Name    string
+	Volume  int32
+	Tempo   int32
+	Balance int32
+}
+
 // ********** Client -> Server **********
+// These are packets sent by the client
+// and handled by the server.
 
 type SwitchRoomC2S struct {
 	RoomID int32
@@ -109,6 +121,15 @@ type TransparencyC2S struct {
 	Transparency int32
 }
 
+type SoundEffectC2S struct {
+	Name    string
+	Volume  int32
+	Tempo   int32
+	Balance int32
+}
+
+// ********** Message Registry **********
+
 var (
 	packetsS2C = make(map[reflect.Type]string)
 	packetsC2S = make(map[string]reflect.Type)
@@ -136,6 +157,7 @@ func RegisterAllPackets() {
 	registerS2C[HiddenS2C]("h")
 	registerS2C[TransparencyS2C]("tr")
 	registerS2C[SysNameS2C]("sys")
+	registerS2C[SoundEffectS2C]("se")
 
 	registerC2S[SwitchRoomC2S]("sr")
 	registerC2S[MainPlayerPosC2S]("m")
@@ -145,4 +167,5 @@ func RegisterAllPackets() {
 	registerC2S[HiddenC2S]("h")
 	registerC2S[SysNameC2S]("sys")
 	registerC2S[TransparencyC2S]("tr")
+	registerC2S[SoundEffectC2S]("se")
 }
