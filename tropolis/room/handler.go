@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
+	"fmt"
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
@@ -136,7 +137,7 @@ func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
 
 // Change from one room to another.
 func (h *Handler) changeRoom(u *User, newID int32) {
-	d := u.GetData()
+	d := u.getData()
 
 	// If the two rooms are different,
 	// we need to handle leaving the other room
@@ -172,7 +173,7 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	slog.Info("open", "cID", s.GetSubscriberID())
 
 	// Send initial packet
-	d := s.GetData()
+	d := s.getData()
 	s.Send(pt.SyncPlayerDataS2C{
 		HostID:     d.cID,
 		Key:        d.guardKey,
@@ -187,8 +188,8 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	h.changeRoom(s, d.roomID)
 }
 
-func (h *Handler) processMessage(u *User, m any) {
-	d := u.GetData()
+func (h *Handler) processMessage(u *User, m any) (err error) {
+	d := u.getData()
 
 	switch m := m.(type) {
 
@@ -211,7 +212,10 @@ func (h *Handler) processMessage(u *User, m any) {
 		h.shareToRoom(d, pt.SpriteS2C{ID: d.cID, Name: d.sprite, Index: d.spriteIndex})
 
 	case pt.FacingC2S:
-		d.facing = m.Direction
+		err = d.setFacing(m.Direction)
+		if err != nil {
+			return
+		}
 		h.shareToRoom(d, pt.FacingS2C{ID: d.cID, Direction: d.facing})
 
 	case pt.HiddenC2S:
@@ -230,15 +234,17 @@ func (h *Handler) processMessage(u *User, m any) {
 		h.shareToRoom(d, pt.SoundEffectS2C{ID: d.cID, Name: m.Name, Volume: m.Volume, Tempo: m.Tempo, Balance: m.Balance})
 
 	default:
-		slog.Info("unhandled", "msg", m)
+		err = fmt.Errorf("unhandled msg %+v", m)
 	}
+
+	return
 }
 
 func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 	defer msg.Close()
 
 	s := NewUser(c)
-	d := s.GetData()
+	d := s.getData()
 
 	m := msg.Bytes()
 	if len(m) < 8 {
@@ -284,7 +290,7 @@ func (h *Handler) OnClose(c *gws.Conn, err error) {
 	slog.Info("close", "cID", s.GetSubscriberID())
 
 	// Leave room
-	d := s.GetData()
+	d := s.getData()
 	h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})
 
 	// Remove all subscriptions

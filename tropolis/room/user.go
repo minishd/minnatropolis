@@ -1,6 +1,8 @@
 package room
 
 import (
+	"errors"
+
 	"github.com/lxzan/gws"
 	pt "github.com/minishd/minnatropolis/tropolis/protocol"
 	"github.com/minishd/minnatropolis/tropolis/room/emitter"
@@ -32,21 +34,30 @@ type clientData struct {
 	sysName      string
 }
 
+func (cd *clientData) setFacing(facing int32) (err error) {
+	if facing < 0 || facing > 3 {
+		err = errors.New("facing direction out of range")
+		return
+	}
+	cd.facing = facing
+	return
+}
+
 // Wrapper around a [gws.Conn].
 //
-// Implements [ee.Subscriber] and provides
+// Implements [emitter.Subscriber] and provides
 // relevant utility functions.
 type User gws.Conn
 
 func NewUser(c *gws.Conn) *User { return (*User)(c) }
 
 func (u *User) GetMetadata() emitter.Metadata { return u.Conn().Session() }
-func (u *User) GetSubscriberID() int32        { return u.GetData().cID }
+func (u *User) GetSubscriberID() int32        { return u.getData().cID }
 
 // Get underlying [gws.Conn].
 func (u *User) Conn() *gws.Conn { return (*gws.Conn)(u) }
 
-func (u *User) GetData() *clientData {
+func (u *User) getData() *clientData {
 	cd, _ := u.GetMetadata().Load("cd")
 	return cd.(*clientData)
 }
@@ -61,7 +72,7 @@ func (u *User) Send(msgs ...any) {
 
 // Get the packets for our initial state.
 func (u *User) GetIntroMessages() (msgs []any) {
-	d := u.GetData()
+	d := u.getData()
 
 	msgs = append(msgs, pt.ConnectS2C{
 		ID: d.cID, UUID: d.accountUUID,
