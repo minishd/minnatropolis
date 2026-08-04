@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
-	pt "github.com/minishd/minnatropolis/tropolis/protocol"
 	"github.com/minishd/minnatropolis/tropolis/room/emitter"
+	pt "github.com/minishd/minnatropolis/tropolis/room/protocol"
 )
 
 // Shared handler for room websocket events
@@ -82,6 +82,7 @@ const (
 	defaultSpeed  = 4
 
 	defaultTransparency = 0
+	defaultHidden       = false
 	defaultSprite       = ""
 	defaultSpriteIndex  = -1
 	defaultSysName      = ""
@@ -115,7 +116,7 @@ func Authorize(r *http.Request, session gws.SessionStorage) bool {
 		speed:  defaultSpeed,
 
 		transparency: defaultTransparency,
-		hidden:       false,
+		hidden:       defaultHidden,
 		sprite:       defaultSprite,
 		spriteIndex:  defaultSpriteIndex,
 		sysName:      defaultSysName,

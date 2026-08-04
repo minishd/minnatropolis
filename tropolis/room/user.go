@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/lxzan/gws"
-	pt "github.com/minishd/minnatropolis/tropolis/protocol"
 	"github.com/minishd/minnatropolis/tropolis/room/emitter"
+	pt "github.com/minishd/minnatropolis/tropolis/room/protocol"
 )
 
 // Data associated with a room client
@@ -98,7 +98,7 @@ func (u *User) GetIntroMessages() (msgs []any) {
 	if d.transparency != defaultTransparency {
 		msgs = append(msgs, pt.TransparencyS2C{ID: d.cID, Transparency: d.transparency})
 	}
-	if d.hidden {
+	if d.hidden != defaultHidden {
 		msgs = append(msgs, pt.HiddenS2C{ID: d.cID, Hidden: d.hidden})
 	}
 	if d.sysName != defaultSysName {
