@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
-	"github.com/minishd/minnatropolis/tropolis/room/emitter"
-	pt "github.com/minishd/minnatropolis/tropolis/room/protocol"
+	"github.com/minishd/minnatropolis/tropolis/api/room/emitter"
+	pt "github.com/minishd/minnatropolis/tropolis/api/room/protocol"
 )
 
 // Shared handler for room websocket events
@@ -103,12 +103,18 @@ func Authorize(r *http.Request, session gws.SessionStorage) bool {
 	// Get token
 	token := r.URL.Query().Get("token")
 
+	// Make guard key
+	guardKey := rand.Uint32()
+	guardKeyBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(guardKeyBytes, guardKey)
+
 	// Set up data
 	session.Store("cd", &clientData{
-		cID:         cIDCounter.Add(1),
-		name:        token,            // Temporary
-		accountUUID: uuid.NewString(), // Temporary
-		guardKey:    rand.Uint32(),
+		cID:           cIDCounter.Add(1),
+		name:          token,            // Temporary
+		accountUUID:   uuid.NewString(), // Temporary
+		guardKey:      guardKey,
+		guardKeyBytes: guardKeyBytes,
 
 		roomID: int32(roomID),
 		x:      defaultXY, y: defaultXY,
@@ -255,14 +261,10 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 
 	// Verify HMAC
 	// ..
-	guardKeyBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(guardKeyBytes, d.guardKey)
-
 	hash := sha1.New()
 	hash.Write(h.guardPSK)
-	hash.Write(guardKeyBytes)
+	hash.Write(d.guardKeyBytes)
 	hash.Write(m[4:])
-
 	if !bytes.Equal(hash.Sum(nil)[:4], m[:4]) {
 		// Invalid HMAC
 		return

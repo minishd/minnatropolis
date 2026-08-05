@@ -144,7 +144,7 @@ func registerC2S[T any](name string) {
 	packetsC2S[name] = typ
 }
 
-func RegisterAllPackets() {
+func init() {
 	registerS2C[SyncPlayerDataS2C]("s")
 	registerS2C[RoomInfoS2C]("ri")
 	registerS2C[ConnectS2C]("c")

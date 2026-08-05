@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/lxzan/gws"
-	"github.com/minishd/minnatropolis/tropolis/room/emitter"
-	pt "github.com/minishd/minnatropolis/tropolis/room/protocol"
+	"github.com/minishd/minnatropolis/tropolis/api/room/emitter"
+	pt "github.com/minishd/minnatropolis/tropolis/api/room/protocol"
 )
 
 // Data associated with a room client
@@ -21,6 +21,7 @@ type clientData struct {
 	medals      [5]int32
 
 	guardKey, guardCount uint32
+	guardKeyBytes        []byte // so we don't need to recompute
 
 	roomID int32
 	x, y   int32

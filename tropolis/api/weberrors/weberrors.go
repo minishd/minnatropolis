@@ -13,8 +13,6 @@ func (we *WebError) Error() string {
 }
 
 var (
-	// TODO: for demonstration purposes only
-	ErrUserNotFound       = &WebError{404, "user not found"}
 	ErrInvalidCredentials = &WebError{400, "invalid credentials"}
 	ErrServerInternal     = &WebError{500, "internal server error"}
 )
