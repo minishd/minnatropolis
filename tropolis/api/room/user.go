@@ -63,12 +63,10 @@ func (u *User) getData() *clientData {
 	return cd.(*clientData)
 }
 
-func onWriteError(err error) {}
-
 // Serialize and send a YNO message.
 func (u *User) Send(msgs ...any) {
 	data := pt.Serialize(msgs...)
-	u.Conn().WriteAsync(gws.OpcodeBinary, data, onWriteError)
+	u.Conn().WriteAsync(gws.OpcodeBinary, data, nil)
 }
 
 // Get the packets for our initial state.

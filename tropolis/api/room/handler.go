@@ -49,7 +49,7 @@ func (h *Handler) subscribeRawTopic(s *User, topic string) {
 		}
 
 		// Send the message
-		_ = tm.bc.Broadcast(s.Conn())
+		_ = tm.bc.Broadcast(s.Conn(), nil)
 	})
 }
 
