@@ -3,12 +3,12 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"log/slog"
+	"log"
 	"net/http"
 
 	"github.com/lxzan/gws"
-	"github.com/minishd/minnatropolis/tropolis/api/room"
-	"github.com/minishd/minnatropolis/tropolis/api/weberrors"
+	"github.com/minishd/minnatropolis/api/room"
+	"github.com/minishd/minnatropolis/api/weberrors"
 )
 
 func AddRoutes(mux *http.ServeMux, guardPSK []byte) {
@@ -71,7 +71,7 @@ func wrap[Req any, Res any](handler func(Req) (Res, error)) http.Handler {
 			we, ok := errors.AsType[*weberrors.WebError](err)
 			if !ok {
 				// It's not an expected error
-				slog.Error("handler raised error", "err", err)
+				log.Println("handler raised error", err)
 				we = weberrors.ErrServerInternal
 			}
 			final = errorResponse{we.Note}

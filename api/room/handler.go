@@ -5,7 +5,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
-	"log/slog"
+	"log"
 	"math/rand/v2"
 	"net/http"
 	"strconv"
@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
-	"github.com/minishd/minnatropolis/tropolis/api/room/emitter"
-	pt "github.com/minishd/minnatropolis/tropolis/api/room/protocol"
+	"github.com/minishd/minnatropolis/api/room/emitter"
+	pt "github.com/minishd/minnatropolis/api/room/protocol"
 )
 
 // Shared handler for room websocket events
@@ -177,7 +177,7 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 
 func (h *Handler) OnOpen(c *gws.Conn) {
 	s := NewUser(c)
-	slog.Info("open", "cID", s.GetSubscriberID())
+	log.Println("open cID=", s.GetSubscriberID())
 
 	// Send initial packet
 	d := s.getData()
@@ -201,7 +201,7 @@ func (h *Handler) processMessage(u *User, m any) (err error) {
 	switch m := m.(type) {
 
 	case pt.SwitchRoomC2S:
-		slog.Info("change to", "room", m.RoomID)
+		log.Println("change to room", m.RoomID)
 		h.changeRoom(u, m.RoomID)
 
 	case pt.MainPlayerPosC2S:
@@ -275,7 +275,7 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 	count := binary.BigEndian.Uint32(m[4:8])
 	if count <= d.guardCount {
 		// The sent count should only increase
-		slog.Warn("declined count", "msgs", pt.Deserialize(m[8:]))
+		log.Printf("declined count")
 		return
 	}
 	d.guardCount = count
@@ -290,7 +290,7 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 
 func (h *Handler) OnClose(c *gws.Conn, err error) {
 	s := NewUser(c)
-	slog.Info("close", "cID", s.GetSubscriberID())
+	log.Println("close cID=", s.GetSubscriberID())
 
 	// Leave room
 	d := s.getData()

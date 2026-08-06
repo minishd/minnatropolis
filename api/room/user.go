@@ -4,8 +4,8 @@ import (
 	"errors"
 
 	"github.com/lxzan/gws"
-	"github.com/minishd/minnatropolis/tropolis/api/room/emitter"
-	pt "github.com/minishd/minnatropolis/tropolis/api/room/protocol"
+	"github.com/minishd/minnatropolis/api/room/emitter"
+	pt "github.com/minishd/minnatropolis/api/room/protocol"
 )
 
 // Data associated with a room client
