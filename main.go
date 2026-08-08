@@ -5,7 +5,6 @@ import (
 	"embed"
 	"encoding/hex"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -68,9 +67,8 @@ func run(rootCtx context.Context) error {
 
 	// Set up server
 	server := &http.Server{
-		Addr:        listenOn,
-		Handler:     mux,
-		BaseContext: func(l net.Listener) context.Context { return ctx },
+		Addr:    listenOn,
+		Handler: mux,
 	}
 
 	// Start shutdown watcher
