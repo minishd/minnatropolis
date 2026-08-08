@@ -14,5 +14,7 @@ func (we *WebError) Error() string {
 
 var (
 	ErrInvalidCredentials = &WebError{400, "invalid credentials"}
+	ErrUsernameTaken      = &WebError{400, "username taken"}
+	ErrUsernameInvalid    = &WebError{400, "username invalid"}
 	ErrServerInternal     = &WebError{500, "internal server error"}
 )

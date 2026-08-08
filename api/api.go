@@ -1,17 +1,20 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/weberrors"
+	"github.com/minishd/minnatropolis/datastore"
 )
 
-func AddRoutes(mux *http.ServeMux, guardPSK []byte) {
+func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	// Set up upgrader
 	rh := room.NewHandler(guardPSK)
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
@@ -28,8 +31,9 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte) {
 
 	// Set routes (auth)
 	authMux := http.NewServeMux()
-	authMux.Handle("POST /register", wrap(handleRegister))
-	authMux.Handle("POST /login", wrap(handleLogin))
+	ah := &authHandlers{ds}
+	authMux.Handle("POST /register", wrap(ah.handleRegister))
+	authMux.Handle("POST /login", wrap(ah.handleLogin))
 
 	// Set routes
 	mux.HandleFunc("GET /room", func(w http.ResponseWriter, r *http.Request) {
@@ -49,14 +53,21 @@ type errorResponse struct {
 	Error string
 }
 
-func wrap[Req any, Res any](handler func(Req) (Res, error)) http.Handler {
+var validate *validator.Validate = validator.New(
+	validator.WithRequiredStructEnabled(),
+	validator.WithTagNameFuncBlankOmit(),
+)
+
+func wrap[Req any, Res any](handler func(context.Context, Req) (Res, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Make sure content-type is JSON
 		contentType := r.Header.Get("Content-Type")
 		if contentType != "application/json" {
 			w.WriteHeader(http.StatusUnsupportedMediaType)
 			return
 		}
 
+		// Decode request body from JSON
 		var req Req
 		dec := json.NewDecoder(r.Body)
 		dec.DisallowUnknownFields()
@@ -65,19 +76,42 @@ func wrap[Req any, Res any](handler func(Req) (Res, error)) http.Handler {
 			return
 		}
 
-		res, err := handler(req)
+		// Validate
+		if err := validate.Struct(req); err != nil {
+			log.Println("VALIDATION ERROR !!!!!", err)
+
+			// Is the struct tag just invalid?
+			if _, ok := errors.AsType[*validator.InvalidValidationError](err); ok {
+				// `validate` struct tag is malformed.
+				// This is our fault and should be fixed
+				// before shipping
+				panic(err)
+			}
+
+			// No the struct tag wasn't invalid,
+			// so it is the user's fault
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(err.Error()))
+			return
+		}
+
+		// Call req. handler with decoded and
+		// validated request struct
+		res, err := handler(r.Context(), req)
 		var final any = res
 		if err != nil {
 			we, ok := errors.AsType[*weberrors.WebError](err)
 			if !ok {
 				// It's not an expected error
-				log.Println("handler raised error", err)
+				log.Println("handler raised error:", err)
 				we = weberrors.ErrServerInternal
 			}
 			final = errorResponse{we.Note}
 			w.WriteHeader(we.Status)
 		}
 
+		// Set response content-type header to JSON
+		// and send JSON-encoded response struct
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(final); err != nil {
 			// We shouldn't be failing JSON serializations

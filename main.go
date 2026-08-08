@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 	"github.com/minishd/minnatropolis/api"
-	"github.com/minishd/minnatropolis/db"
+	"github.com/minishd/minnatropolis/datastore"
+	"github.com/minishd/minnatropolis/queries"
 	"github.com/pressly/goose/v3"
 )
 
@@ -58,16 +58,13 @@ func run(rootCtx context.Context) error {
 		return err
 	}
 
-	// Test database
-	q := db.New(pool)
-	q.CreateExample(ctx, db.CreateExampleParams{
-		Name:        "hi",
-		DisplayName: pgtype.Text{String: "hi world test", Valid: true},
-	})
+	// Set up DB wrapper
+	q := queries.New(pool)
+	ds := datastore.New(q)
 
 	// Set up API
 	mux := http.NewServeMux()
-	api.AddRoutes(mux, guardPSK)
+	api.AddRoutes(mux, guardPSK, ds)
 
 	// Set up server
 	server := &http.Server{
@@ -84,7 +81,7 @@ func run(rootCtx context.Context) error {
 		shutdownCtx, shutdownCancel := context.WithTimeout(rootCtx, 10*time.Second)
 		defer shutdownCancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			log.Println("gracefully shutdown failed", "err", err)
+			log.Println("gracefully shutdown failed, err=", err)
 			return
 		}
 	})
