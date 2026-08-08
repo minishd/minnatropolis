@@ -49,8 +49,8 @@ func (h *authHandlers) handleRegister(ctx context.Context, req registerReq) (res
 }
 
 type loginReq struct {
-	Username string
-	Password string
+	Username string `validate:"required"`
+	Password string `validate:"required"`
 }
 type loginRes struct {
 	Token string
