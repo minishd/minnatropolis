@@ -4,26 +4,29 @@ import (
 	"context"
 	"errors"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minishd/minnatropolis/queries"
 )
 
 var (
-	ErrMissingTypeForDB  = errors.New("no corresponding type (app->db)")
-	ErrMissingTypeForApp = errors.New("no corresponding type (db->app)")
-
 	ErrNotUnique  = errors.New("not unique")
 	ErrFailsCheck = errors.New("fails check")
 )
 
+// Database abstraction to decouple
+// DB code from rest of app code
 type DataStore struct {
 	q *queries.Queries
 }
 
-func New(q *queries.Queries) *DataStore {
-	return &DataStore{q}
+func New(pool *pgxpool.Pool) *DataStore {
+	return &DataStore{
+		q: queries.New(pool),
+	}
 }
 
 // Convert Postgres error to one we defined
@@ -68,4 +71,17 @@ func (ds *DataStore) GetUserByUsername(ctx context.Context, username string) (*U
 		return nil, err
 	}
 	return dbUserToApp(user), nil
+}
+
+func (ds *DataStore) CreateSessionToken(ctx context.Context, forUser uuid.UUID, token string) (*SessionToken, error) {
+	st, err := ds.q.CreateSessionToken(ctx, queries.CreateSessionTokenParams{
+		ForUser: forUser,
+		Token:   token,
+	})
+	// Token collisions not accounted for..
+
+	if err != nil {
+		return nil, err
+	}
+	return dbSessionTokenToApp(st), nil
 }

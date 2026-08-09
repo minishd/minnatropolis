@@ -53,6 +53,13 @@ func (ns NullPwHashTypeT) Value() (driver.Value, error) {
 	return string(ns.PwHashTypeT), nil
 }
 
+type SessionToken struct {
+	ID        uuid.UUID
+	CreatedAt pgtype.Timestamptz
+	ForUser   uuid.UUID
+	Token     string
+}
+
 type User struct {
 	ID         uuid.UUID
 	CreatedAt  pgtype.Timestamptz

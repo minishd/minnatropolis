@@ -16,7 +16,6 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/minishd/minnatropolis/api"
 	"github.com/minishd/minnatropolis/datastore"
-	"github.com/minishd/minnatropolis/queries"
 	"github.com/pressly/goose/v3"
 )
 
@@ -58,8 +57,7 @@ func run(rootCtx context.Context) error {
 	}
 
 	// Set up DB wrapper
-	q := queries.New(pool)
-	ds := datastore.New(q)
+	ds := datastore.New(pool)
 
 	// Set up API
 	mux := http.NewServeMux()

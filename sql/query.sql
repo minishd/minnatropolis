@@ -6,3 +6,12 @@ RETURNING *;
 -- name: GetUserByUsername :one
 SELECT * FROM users
 WHERE username = $1;
+
+-- name: CreateSessionToken :one
+INSERT INTO session_tokens (for_user, token)
+VALUES ($1, $2)
+RETURNING *;
+
+-- name: LookupSessionToken :one
+SELECT * FROM session_tokens
+WHERE token = $1;

@@ -7,7 +7,32 @@ package queries
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
+
+const createSessionToken = `-- name: CreateSessionToken :one
+INSERT INTO session_tokens (for_user, token)
+VALUES ($1, $2)
+RETURNING id, created_at, for_user, token
+`
+
+type CreateSessionTokenParams struct {
+	ForUser uuid.UUID
+	Token   string
+}
+
+func (q *Queries) CreateSessionToken(ctx context.Context, arg CreateSessionTokenParams) (SessionToken, error) {
+	row := q.db.QueryRow(ctx, createSessionToken, arg.ForUser, arg.Token)
+	var i SessionToken
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.ForUser,
+		&i.Token,
+	)
+	return i, err
+}
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (username, pw_hash_type, pw_hash)
@@ -48,6 +73,23 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.Username,
 		&i.PwHashType,
 		&i.PwHash,
+	)
+	return i, err
+}
+
+const lookupSessionToken = `-- name: LookupSessionToken :one
+SELECT id, created_at, for_user, token FROM session_tokens
+WHERE token = $1
+`
+
+func (q *Queries) LookupSessionToken(ctx context.Context, token string) (SessionToken, error) {
+	row := q.db.QueryRow(ctx, lookupSessionToken, token)
+	var i SessionToken
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.ForUser,
+		&i.Token,
 	)
 	return i, err
 }

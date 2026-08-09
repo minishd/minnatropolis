@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
 
 	"github.com/alexedwards/argon2id"
+	"github.com/google/uuid"
 	"github.com/minishd/minnatropolis/api/weberrors"
 	"github.com/minishd/minnatropolis/datastore"
 )
@@ -13,12 +15,27 @@ type authHandlers struct {
 	ds *datastore.DataStore
 }
 
+// Helper function that generates a session token for a user
+// and returns its string value
+func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID) (token string, err error) {
+	// Generate token string
+	// then try to add it to DB
+	newToken := rand.Text()
+	st, err := h.ds.CreateSessionToken(ctx, forUser, newToken)
+	if err != nil {
+		return
+	}
+	// Successful so return string of newly made token
+	token = st.Token
+	return
+}
+
 type registerReq struct {
 	Username string `validate:"required"`
 	Password string `validate:"required"`
 }
 type registerRes struct {
-	TestUsername string
+	InitialToken string
 }
 
 func (h *authHandlers) handleRegister(ctx context.Context, req registerReq) (res registerRes, err error) {
@@ -42,8 +59,13 @@ func (h *authHandlers) handleRegister(ctx context.Context, req registerReq) (res
 		return
 	}
 
-	// Set test response data
-	res.TestUsername = user.Username
+	// Return a session token
+	// for the new account
+	token, err := h.issueSessionToken(ctx, user.ID)
+	if err != nil {
+		return
+	}
+	res.InitialToken = token
 
 	return
 }
@@ -78,7 +100,11 @@ func (h *authHandlers) handleLogin(ctx context.Context, req loginReq) (res login
 	}
 
 	// It does match so give them a session token
-	res.Token = "hi"
+	token, err := h.issueSessionToken(ctx, user.ID)
+	if err != nil {
+		return
+	}
+	res.Token = token
 
 	return
 }

@@ -13,7 +13,7 @@ const (
 	PhtArgon2id PwHashType = PwHashType(queries.PwHashTypeTArgon2id)
 )
 
-// We shouldn't be getting invalid [PwHashType]
+// We shouldn't be getting invalid hash type
 // enum values from the DB,
 // and the DB shouldn't let us give it
 // invalid enum values
@@ -43,5 +43,22 @@ func dbUserToApp(in queries.User) *User {
 		Username:   in.Username,
 		PwHashType: dbPwHashTypeToApp(in.PwHashType),
 		PwHash:     in.PwHash,
+	}
+}
+
+// TODO: temporary, its just easiest to map from DB rn
+type SessionToken struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	ForUser   uuid.UUID
+	Token     string
+}
+
+func dbSessionTokenToApp(in queries.SessionToken) *SessionToken {
+	return &SessionToken{
+		ID:        in.ID,
+		CreatedAt: in.CreatedAt.Time,
+		ForUser:   in.ForUser,
+		Token:     in.Token,
 	}
 }
