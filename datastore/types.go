@@ -46,19 +46,32 @@ func dbUserToApp(in queries.User) *User {
 	}
 }
 
-// TODO: temporary, its just easiest to map from DB rn
 type SessionToken struct {
 	ID        uuid.UUID
 	CreatedAt time.Time
-	ForUser   uuid.UUID
+	ForUser   *User
 	Token     string
 }
 
-func dbSessionTokenToApp(in queries.SessionToken) *SessionToken {
+func dbSessionTokenWithUserToApp(in queries.LookupSessionTokenWithUserRow) *SessionToken {
 	return &SessionToken{
 		ID:        in.ID,
 		CreatedAt: in.CreatedAt.Time,
-		ForUser:   in.ForUser,
-		Token:     in.Token,
+		ForUser: &User{
+			ID:         in.UserID,
+			CreatedAt:  in.UserCreatedAt.Time,
+			Username:   in.UserUsername,
+			PwHashType: dbPwHashTypeToApp(in.UserPwHashType),
+			PwHash:     in.UserPwHash,
+		},
 	}
 }
+
+// func dbSessionTokenToApp(in queries.SessionToken) *SessionToken {
+// 	return &SessionToken{
+// 		ID:        in.ID,
+// 		CreatedAt: in.CreatedAt.Time,
+// 		ForUser:   in.ForUser,
+// 		Token:     in.Token,
+// 	}
+// }

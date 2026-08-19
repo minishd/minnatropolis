@@ -21,12 +21,21 @@ func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID)
 	// Generate token string
 	// then try to add it to DB
 	newToken := rand.Text()
-	st, err := h.ds.CreateSessionToken(ctx, forUser, newToken)
+	err = h.ds.InsertSessionToken(ctx, forUser, newToken)
 	if err != nil {
 		return
 	}
-	// Successful so return string of newly made token
-	token = st.Token
+	// Successful
+	return
+}
+
+type whoamiRes struct {
+	Username string
+}
+
+func (h *authHandlers) handleWhoami(ctx context.Context) (res whoamiRes, err error) {
+	// ...
+
 	return
 }
 

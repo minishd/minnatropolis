@@ -9,30 +9,8 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
-
-const createSessionToken = `-- name: CreateSessionToken :one
-INSERT INTO session_tokens (for_user, token)
-VALUES ($1, $2)
-RETURNING id, created_at, for_user, token
-`
-
-type CreateSessionTokenParams struct {
-	ForUser uuid.UUID
-	Token   string
-}
-
-func (q *Queries) CreateSessionToken(ctx context.Context, arg CreateSessionTokenParams) (SessionToken, error) {
-	row := q.db.QueryRow(ctx, createSessionToken, arg.ForUser, arg.Token)
-	var i SessionToken
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.ForUser,
-		&i.Token,
-	)
-	return i, err
-}
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (username, pw_hash_type, pw_hash)
@@ -77,19 +55,58 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 	return i, err
 }
 
-const lookupSessionToken = `-- name: LookupSessionToken :one
-SELECT id, created_at, for_user, token FROM session_tokens
+const insertSessionToken = `-- name: InsertSessionToken :exec
+INSERT INTO session_tokens (for_user, token)
+VALUES ($1, $2)
+`
+
+type InsertSessionTokenParams struct {
+	ForUser uuid.UUID
+	Token   string
+}
+
+func (q *Queries) InsertSessionToken(ctx context.Context, arg InsertSessionTokenParams) error {
+	_, err := q.db.Exec(ctx, insertSessionToken, arg.ForUser, arg.Token)
+	return err
+}
+
+const lookupSessionTokenWithUser = `-- name: LookupSessionTokenWithUser :one
+SELECT st.id, st.created_at, st.for_user, st.token,
+    u.id AS user_id,
+    u.created_at AS user_created_at,
+    u.username AS user_username,
+    u.pw_hash_type AS user_pw_hash_type,
+    u.pw_hash AS user_pw_hash
+FROM session_tokens st
+JOIN users u ON st.for_user = u.id
 WHERE token = $1
 `
 
-func (q *Queries) LookupSessionToken(ctx context.Context, token string) (SessionToken, error) {
-	row := q.db.QueryRow(ctx, lookupSessionToken, token)
-	var i SessionToken
+type LookupSessionTokenWithUserRow struct {
+	ID             uuid.UUID
+	CreatedAt      pgtype.Timestamptz
+	ForUser        uuid.UUID
+	Token          string
+	UserID         uuid.UUID
+	UserCreatedAt  pgtype.Timestamptz
+	UserUsername   string
+	UserPwHashType PwHashTypeT
+	UserPwHash     string
+}
+
+func (q *Queries) LookupSessionTokenWithUser(ctx context.Context, token string) (LookupSessionTokenWithUserRow, error) {
+	row := q.db.QueryRow(ctx, lookupSessionTokenWithUser, token)
+	var i LookupSessionTokenWithUserRow
 	err := row.Scan(
 		&i.ID,
 		&i.CreatedAt,
 		&i.ForUser,
 		&i.Token,
+		&i.UserID,
+		&i.UserCreatedAt,
+		&i.UserUsername,
+		&i.UserPwHashType,
+		&i.UserPwHash,
 	)
 	return i, err
 }

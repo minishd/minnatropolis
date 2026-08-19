@@ -73,15 +73,28 @@ func (ds *DataStore) GetUserByUsername(ctx context.Context, username string) (*U
 	return dbUserToApp(user), nil
 }
 
-func (ds *DataStore) CreateSessionToken(ctx context.Context, forUser uuid.UUID, token string) (*SessionToken, error) {
-	st, err := ds.q.CreateSessionToken(ctx, queries.CreateSessionTokenParams{
+func (ds *DataStore) InsertSessionToken(ctx context.Context, forUser uuid.UUID, token string) error {
+	err := ds.q.InsertSessionToken(ctx, queries.InsertSessionTokenParams{
 		ForUser: forUser,
 		Token:   token,
 	})
 	// Token collisions not accounted for..
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (ds *DataStore) LookupSessionToken(ctx context.Context, token string) (*SessionToken, error) {
+	st, err := ds.q.LookupSessionTokenWithUser(ctx, token)
+
+	// Is there no active session token with that value?
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
 
 	if err != nil {
 		return nil, err
 	}
-	return dbSessionTokenToApp(st), nil
+	return dbSessionTokenWithUserToApp(st), nil
 }

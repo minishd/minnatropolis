@@ -32,8 +32,9 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	// Set routes (auth)
 	authMux := http.NewServeMux()
 	ah := &authHandlers{ds}
-	authMux.Handle("POST /register", wrap(ah.handleRegister))
-	authMux.Handle("POST /login", wrap(ah.handleLogin))
+	authMux.Handle("POST /register", wrapWithReq(ah.handleRegister))
+	authMux.Handle("POST /login", wrapWithReq(ah.handleLogin))
+	authMux.Handle("GET /whoami", wrap(ah.handleWhoami))
 
 	// Set routes
 	mux.HandleFunc("GET /room", func(w http.ResponseWriter, r *http.Request) {
@@ -49,6 +50,8 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	})
 }
 
+// Response type that is sent back to the client
+// if their request didn't succeed
 type errorResponse struct {
 	Error string
 }
@@ -58,7 +61,43 @@ var validate *validator.Validate = validator.New(
 	validator.WithTagNameFuncBlankOmit(),
 )
 
-func wrap[Req any, Res any](handler func(context.Context, Req) (Res, error)) http.Handler {
+func wrap[Res any](handler func(context.Context) (Res, error)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Call req. handler
+		res, err := handler(r.Context())
+		var finalRes any = res
+		if err != nil {
+			// An error was returned
+			// See if it's a [weberrors.WebError],
+			// werr wrote down status codes and error messages
+			// for those that werr want to return
+			werr, ok := errors.AsType[*weberrors.WebError](err)
+			if !ok {
+				// We could not cast it to a [weberrors.WebError]
+				// Log it, and fall back to generic "server error" message
+				log.Println("handler raised error:", err)
+				werr = weberrors.ErrServerInternal
+			}
+			// Change the final response to an error response,
+			// and set the status code
+			finalRes = errorResponse{werr.Note}
+			w.WriteHeader(werr.Status)
+		}
+
+		// Set response content-type header to JSON
+		// and send JSON-encoded response struct
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(finalRes); err != nil {
+			// We shouldn't be failing JSON serializations
+			// That is something that can be accounted for
+			// at compile-time for the most part
+			panic(err)
+		}
+
+	})
+}
+
+func wrapWithReq[Req any, Res any](handler func(context.Context, Req) (Res, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Make sure content-type is JSON
 		contentType := r.Header.Get("Content-Type")
@@ -78,8 +117,6 @@ func wrap[Req any, Res any](handler func(context.Context, Req) (Res, error)) htt
 
 		// Validate
 		if err := validate.Struct(req); err != nil {
-			log.Println("VALIDATION ERROR !!!!!", err)
-
 			// Is the struct tag just invalid?
 			if _, ok := errors.AsType[*validator.InvalidValidationError](err); ok {
 				// `validate` struct tag is malformed.

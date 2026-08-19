@@ -275,14 +275,18 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 	count := binary.BigEndian.Uint32(m[4:8])
 	if count <= d.guardCount {
 		// The sent count should only increase
-		log.Printf("declined count")
+		log.Println("declined count")
 		return
 	}
 	d.guardCount = count
 
 	// Message handling
 	// ..
-	msgs := pt.Deserialize(m[8:])
+	msgs, err := pt.Deserialize(m[8:])
+	if err != nil {
+		log.Println("invalid packet")
+		return
+	}
 	for _, msg := range msgs {
 		h.processMessage(s, msg)
 	}
