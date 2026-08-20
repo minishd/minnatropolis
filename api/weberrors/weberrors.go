@@ -1,6 +1,8 @@
 package weberrors
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Strongly-typed representation of an API error.
 //
@@ -23,5 +25,9 @@ var (
 	ErrInvalidCredentials = &WebError{400, "invalid credentials"}
 	ErrUsernameTaken      = &WebError{400, "username taken"}
 	ErrUsernameInvalid    = &WebError{400, "username invalid"}
-	ErrServerInternal     = &WebError{500, "internal server error"}
+
+	ErrNotJSON        = &WebError{415, "only json accepted"}
+	ErrBodyMalformed  = &WebError{400, "request body malformed"}
+	ErrBodyInvalid    = &WebError{400, "request body fails validation"}
+	ErrServerInternal = &WebError{500, "internal server error"}
 )
