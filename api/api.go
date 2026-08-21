@@ -109,7 +109,8 @@ func sendRes[Res any](w http.ResponseWriter, res Res) (err error) {
 // and sends back an appropriate HTTP response
 type handleError func(w http.ResponseWriter, r *http.Request) (err error)
 
-// Session handler wrapper for authentication
+// Request handler that additionally receives the
+// session of the user that sent the request
 type sessionHandler func(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error)
 
 func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {

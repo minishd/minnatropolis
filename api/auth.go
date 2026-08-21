@@ -17,8 +17,7 @@ type authHandlers struct {
 	ds *datastore.DataStore
 }
 
-// Request handler that additionally receives the
-// session of the user that sent the request
+// Session handler wrapper for authentication
 func (h *authHandlers) requireAuth(next sessionHandler) handleError {
 	return func(w http.ResponseWriter, r *http.Request) (err error) {
 		header := r.Header.Get("Authorization")
