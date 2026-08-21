@@ -131,7 +131,7 @@ func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Set status code & send back error response
-		if err := sendRes(w, http.StatusOK, errorResponse{werr.Note}); err != nil {
+		if err := sendRes(w, werr.Status, errorResponse{werr.Note}); err != nil {
 			log.Println("couldn't send error response:", err)
 		}
 	}
