@@ -11,6 +11,10 @@ WHERE username = $1;
 INSERT INTO session_tokens (for_user, token)
 VALUES ($1, $2);
 
+-- name: DeleteSessionToken :exec
+DELETE FROM session_tokens
+WHERE id = $1;
+
 -- name: LookupSessionTokenWithUser :one
 SELECT st.*,
     u.id AS user_id,
