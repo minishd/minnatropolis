@@ -5,12 +5,22 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/weberrors"
 	"github.com/minishd/minnatropolis/datastore"
+	"golang.org/x/time/rate"
+)
+
+const (
+	registerRateLimitEvery = 5 * time.Minute
+	loginRateLimitEvery    = 20 * time.Second
+
+	registerRateLimitBurst = 5
+	loginRateLimitBurst    = 3
 )
 
 func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
@@ -31,8 +41,13 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	// Set routes (auth)
 	authMux := http.NewServeMux()
 	ah := &authHandlers{ds}
-	authMux.Handle("POST /register", handleError(ah.handleRegister))
-	authMux.Handle("POST /login", handleError(ah.handleLogin))
+
+	// Set limits (rate limiting)
+	registerLimiter := newLimiter(rate.Every(registerRateLimitEvery), registerRateLimitBurst)
+	loginLimiter := newLimiter(rate.Every(loginRateLimitEvery), loginRateLimitBurst)
+
+	authMux.Handle("POST /register", registerLimiter.checkRateLimit(ah.handleRegister))
+	authMux.Handle("POST /login", loginLimiter.checkRateLimit(ah.handleLogin))
 	authMux.Handle("POST /logout", ah.requireAuth(ah.handleLogout))
 	authMux.Handle("GET /whoami", ah.requireAuth(ah.handleWhoami))
 

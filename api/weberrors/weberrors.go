@@ -26,6 +26,7 @@ var (
 	ErrUsernameTaken      = &WebError{400, "username taken"}
 	ErrUsernameInvalid    = &WebError{400, "username invalid"}
 	ErrUnauthorized       = &WebError{401, "unauthorized"}
+	ErrTooManyRequests    = &WebError{429, "too many requests"}
 
 	ErrNotJSON        = &WebError{415, "only json accepted"}
 	ErrBodyMalformed  = &WebError{400, "request body malformed"}
