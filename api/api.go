@@ -33,7 +33,7 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	ah := &authHandlers{ds}
 	authMux.Handle("POST /register", handleError(ah.handleRegister))
 	authMux.Handle("POST /login", handleError(ah.handleLogin))
-	authMux.Handle("GET /whoami", http.HandlerFunc(ah.handleWhoami))
+	authMux.Handle("GET /whoami", ah.requireAuth(ah.handleWhoami))
 
 	// Set routes
 	mux.HandleFunc("GET /room", func(w http.ResponseWriter, r *http.Request) {

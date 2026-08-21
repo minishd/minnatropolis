@@ -17,6 +17,8 @@ type authHandlers struct {
 	ds *datastore.DataStore
 }
 
+// Request handler that additionally receives the
+// session of the user that sent the request
 func (h *authHandlers) requireAuth(next sessionHandler) handleError {
 	return func(w http.ResponseWriter, r *http.Request) (err error) {
 		header := r.Header.Get("Authorization")
@@ -51,13 +53,14 @@ func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID)
 	return
 }
 
-// Test route that should return the requester's username
-func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request) {
+// Route that returns the requester's username
+func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type whoamiRes struct {
 		Username string
 	}
 
-	sendRes(w, whoamiRes{"todo"})
+	sendRes(w, whoamiRes{session.ForUser.Username})
+	return
 }
 
 // Handles account registration
