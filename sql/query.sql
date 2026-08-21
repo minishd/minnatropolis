@@ -24,4 +24,5 @@ SELECT st.*,
     u.pw_hash AS user_pw_hash
 FROM session_tokens st
 JOIN users u ON st.for_user = u.id
-WHERE token = $1;
+WHERE token = $1
+    AND st.created_at > now() - interval '30 days';

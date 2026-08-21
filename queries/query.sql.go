@@ -90,6 +90,7 @@ SELECT st.id, st.created_at, st.for_user, st.token,
 FROM session_tokens st
 JOIN users u ON st.for_user = u.id
 WHERE token = $1
+    AND st.created_at > now() - interval '30 days'
 `
 
 type LookupSessionTokenWithUserRow struct {
