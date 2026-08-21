@@ -98,3 +98,7 @@ func (ds *DataStore) LookupSessionToken(ctx context.Context, token string) (*Ses
 	}
 	return dbSessionTokenWithUserToApp(st), nil
 }
+
+func (ds *DataStore) DeleteSessionToken(ctx context.Context, id uuid.UUID) error {
+	return ds.q.DeleteSessionToken(ctx, id)
+}
