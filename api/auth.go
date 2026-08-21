@@ -38,6 +38,9 @@ func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request) (err
 
 	// Get auth
 	st, err := getAuth(h.ds, r)
+	if err != nil {
+		return
+	}
 
 	// Say who
 	if st != nil {
