@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/lxzan/gws"
@@ -33,7 +34,7 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	ah := &authHandlers{ds}
 	authMux.Handle("POST /register", handleError(ah.handleRegister))
 	authMux.Handle("POST /login", handleError(ah.handleLogin))
-	authMux.Handle("GET /whoami", http.HandlerFunc(ah.handleWhoami))
+	authMux.Handle("GET /whoami", handleError(ah.handleWhoami))
 
 	// Set routes
 	mux.HandleFunc("GET /room", func(w http.ResponseWriter, r *http.Request) {
@@ -49,16 +50,30 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	})
 }
 
-// Response type that is sent back to the client
-// if their request didn't succeed
-type errorResponse struct {
-	Error string
-}
-
 var validate *validator.Validate = validator.New(
 	validator.WithRequiredStructEnabled(),
 	validator.WithTagNameFuncBlankOmit(),
 )
+
+// Reads and looks up a provided session token
+func getAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionToken, err error) {
+	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
+
+	// Make sure prefix is present
+	token, found := strings.CutPrefix(authorization, "Session ")
+	if !found {
+		return
+	}
+
+	// Look up token
+	ctx := r.Context()
+	st, err = ds.LookupSessionToken(ctx, token)
+	if err != nil {
+		return
+	}
+
+	return
+}
 
 // Parses the body of a request from JSON
 func parseReq[Req any](r *http.Request) (req Req, err error) {
@@ -107,7 +122,16 @@ func sendRes[Res any](w http.ResponseWriter, res Res) (err error) {
 
 // Middleware that catches errors, conditionally logs,
 // and sends back an appropriate HTTP response
+//
+// Also kind of wraps an error-returning handler into a normal [http.Handler],
+// which can then be chained with other middlewares
 type handleError func(w http.ResponseWriter, r *http.Request) (err error)
+
+// Response type that is sent back to the client
+// if their request didn't succeed
+type errorResponse struct {
+	Error string
+}
 
 func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Call req. handler

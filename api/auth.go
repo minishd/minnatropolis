@@ -31,12 +31,22 @@ func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID)
 }
 
 // Test route that should return the requester's username
-func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request) {
+func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request) (err error) {
 	type whoamiRes struct {
 		Username string
 	}
 
-	sendRes(w, whoamiRes{"todo"})
+	// Get auth
+	st, err := getAuth(h.ds, r)
+
+	// Say who
+	if st != nil {
+		sendRes(w, whoamiRes{st.ForUser.Username})
+	} else {
+		sendRes(w, whoamiRes{"who are you"})
+	}
+
+	return
 }
 
 // Handles account registration
