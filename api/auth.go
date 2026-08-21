@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"net/http"
+	"strings"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/google/uuid"
@@ -14,6 +15,26 @@ import (
 // Shared state for /auth API endpoint handlers
 type authHandlers struct {
 	ds *datastore.DataStore
+}
+
+func (h *authHandlers) requireAuth(next sessionHandler) handleError {
+	return func(w http.ResponseWriter, r *http.Request) (err error) {
+		header := r.Header.Get("Authorization")
+		after, found := strings.CutPrefix(header, "Bearer ")
+		if !found {
+			return weberrors.ErrUnauthorized
+		}
+
+		sessionToken, err := h.ds.LookupSessionToken(r.Context(), after)
+		if err != nil {
+			return
+		}
+		if sessionToken == nil {
+			return weberrors.ErrUnauthorized
+		}
+
+		return next(w, r, sessionToken)
+	}
 }
 
 // Helper function that generates a session token for a user
