@@ -33,6 +33,7 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	ah := &authHandlers{ds}
 	authMux.Handle("POST /register", handleError(ah.handleRegister))
 	authMux.Handle("POST /login", handleError(ah.handleLogin))
+	authMux.Handle("POST /logout", ah.requireAuth(ah.handleLogout))
 	authMux.Handle("GET /whoami", ah.requireAuth(ah.handleWhoami))
 
 	// Set routes
@@ -98,9 +99,10 @@ func parseReq[Req any](r *http.Request) (req Req, err error) {
 }
 
 // Send back a JSON response
-func sendRes[Res any](w http.ResponseWriter, res Res) (err error) {
+func sendRes[Res any](w http.ResponseWriter, status int, res Res) (err error) {
 	// Set Content-Type, encode & send
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 	err = json.NewEncoder(w).Encode(res)
 	return
 }
@@ -129,8 +131,7 @@ func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Set status code & send back error response
-		w.WriteHeader(werr.Status)
-		if err := sendRes(w, errorResponse{werr.Note}); err != nil {
+		if err := sendRes(w, http.StatusOK, errorResponse{werr.Note}); err != nil {
 			log.Println("couldn't send error response:", err)
 		}
 	}

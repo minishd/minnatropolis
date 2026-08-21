@@ -53,13 +53,31 @@ func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID)
 }
 
 // Route that returns the requester's username
+// (Needs authentication)
 func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type whoamiRes struct {
 		Username string
 	}
 
-	sendRes(w, whoamiRes{session.ForUser.Username})
+	sendRes(w, http.StatusOK, whoamiRes{session.ForUser.Username})
 	return
+}
+
+// Handles logging out of accounts
+// (Needs authentication)
+func (h *authHandlers) handleLogout(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	type logoutRes struct {
+		Success bool
+	}
+
+	ctx := r.Context()
+	err = h.ds.DeleteSessionToken(ctx, session.ID)
+	if err != nil {
+		return
+	}
+
+	sendRes(w, http.StatusOK, logoutRes{true})
+	return err
 }
 
 // Handles account registration
@@ -105,7 +123,7 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 	if err != nil {
 		return
 	}
-	sendRes(w, registerRes{token})
+	sendRes(w, http.StatusOK, registerRes{token})
 
 	return
 }
@@ -152,7 +170,7 @@ func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err 
 	if err != nil {
 		return
 	}
-	sendRes(w, loginRes{token})
+	sendRes(w, http.StatusOK, loginRes{token})
 
 	return
 }
