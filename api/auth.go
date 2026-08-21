@@ -41,9 +41,9 @@ func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request) (err
 
 	// Say who
 	if st != nil {
-		sendRes(w, whoamiRes{st.ForUser.Username})
+		err = sendRes(w, whoamiRes{st.ForUser.Username})
 	} else {
-		sendRes(w, whoamiRes{"who are you"})
+		err = sendRes(w, whoamiRes{"who are you"})
 	}
 
 	return
@@ -92,7 +92,7 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 	if err != nil {
 		return
 	}
-	sendRes(w, registerRes{token})
+	err = sendRes(w, registerRes{token})
 
 	return
 }
@@ -139,7 +139,7 @@ func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err 
 	if err != nil {
 		return
 	}
-	sendRes(w, loginRes{token})
+	err = sendRes(w, loginRes{token})
 
 	return
 }

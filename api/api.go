@@ -129,7 +129,7 @@ type handleError func(w http.ResponseWriter, r *http.Request) (err error)
 
 // Response type that is sent back to the client
 // if their request didn't succeed
-type errorResponse struct {
+type errorRes struct {
 	Error string
 }
 
@@ -150,7 +150,7 @@ func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Set status code & send back error response
 		w.WriteHeader(werr.Status)
-		if err := sendRes(w, errorResponse{werr.Note}); err != nil {
+		if err := sendRes(w, errorRes{werr.Note}); err != nil {
 			log.Println("couldn't send error response:", err)
 		}
 	}
