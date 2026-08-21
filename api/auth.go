@@ -84,7 +84,7 @@ func (h *authHandlers) handleLogout(w http.ResponseWriter, r *http.Request, sess
 func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (err error) {
 	type registerReq struct {
 		Username string `validate:"required"`
-		Password string `validate:"required"`
+		Password string `validate:"required,min=8,max=128"`
 	}
 	type registerRes struct {
 		InitialToken string
@@ -132,7 +132,7 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err error) {
 	type loginReq struct {
 		Username string `validate:"required"`
-		Password string `validate:"required"`
+		Password string `validate:"required,min=8,max=128"`
 	}
 	type loginRes struct {
 		Token string
