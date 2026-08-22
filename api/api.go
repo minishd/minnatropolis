@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -69,6 +70,12 @@ var validate *validator.Validate = validator.New(
 	validator.WithRequiredStructEnabled(),
 	validator.WithTagNameFuncBlankOmit(),
 )
+
+// Response type that is sent back to the client
+// if their request didn't succeed
+type errorRes struct {
+	Error string
+}
 
 // Reads and looks up a provided session token
 func getAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionToken, err error) {
@@ -163,7 +170,7 @@ func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Set status code & send back error response
-		if err := sendRes(w, werr.Status, errorResponse{werr.Note}); err != nil {
+		if err := sendRes(w, werr.Status, errorRes{werr.Note}); err != nil {
 			log.Println("couldn't send error response:", err)
 		}
 	}

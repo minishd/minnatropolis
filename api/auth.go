@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"net/http"
-	"strings"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/google/uuid"
@@ -20,21 +19,15 @@ type authHandlers struct {
 // Session handler wrapper for authentication
 func (h *authHandlers) requireAuth(next sessionHandler) handleError {
 	return func(w http.ResponseWriter, r *http.Request) (err error) {
-		header := r.Header.Get("Authorization")
-		after, found := strings.CutPrefix(header, "Bearer ")
-		if !found {
-			return weberrors.ErrUnauthorized
-		}
-
-		sessionToken, err := h.ds.LookupSessionToken(r.Context(), after)
+		session, err := getAuth(h.ds, r)
 		if err != nil {
 			return
 		}
-		if sessionToken == nil {
+		if session == nil {
 			return weberrors.ErrUnauthorized
 		}
 
-		return next(w, r, sessionToken)
+		return next(w, r, session)
 	}
 }
 
