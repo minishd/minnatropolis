@@ -7,10 +7,26 @@ package queries
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const clearOtherSessionTokensForUser = `-- name: ClearOtherSessionTokensForUser :exec
+DELETE FROM session_tokens
+WHERE for_user = $1
+  AND id != $2
+`
+
+type ClearOtherSessionTokensForUserParams struct {
+	ForUser uuid.UUID
+	ID      uuid.UUID
+}
+
+func (q *Queries) ClearOtherSessionTokensForUser(ctx context.Context, arg ClearOtherSessionTokensForUserParams) error {
+	_, err := q.db.Exec(ctx, clearOtherSessionTokensForUser, arg.ForUser, arg.ID)
+	return err
+}
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (username, pw_hash_type, pw_hash)
@@ -66,22 +82,23 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 }
 
 const insertSessionToken = `-- name: InsertSessionToken :exec
-INSERT INTO session_tokens (for_user, token)
-VALUES ($1, $2)
+INSERT INTO session_tokens (for_user, token, expires_at)
+VALUES ($1, $2, $3)
 `
 
 type InsertSessionTokenParams struct {
-	ForUser uuid.UUID
-	Token   string
+	ForUser   uuid.UUID
+	Token     string
+	ExpiresAt time.Time
 }
 
 func (q *Queries) InsertSessionToken(ctx context.Context, arg InsertSessionTokenParams) error {
-	_, err := q.db.Exec(ctx, insertSessionToken, arg.ForUser, arg.Token)
+	_, err := q.db.Exec(ctx, insertSessionToken, arg.ForUser, arg.Token, arg.ExpiresAt)
 	return err
 }
 
 const lookupSessionTokenWithUser = `-- name: LookupSessionTokenWithUser :one
-SELECT st.id, st.created_at, st.for_user, st.token,
+SELECT st.id, st.created_at, st.for_user, st.token, st.expires_at,
     u.id AS user_id,
     u.created_at AS user_created_at,
     u.username AS user_username,
@@ -90,16 +107,17 @@ SELECT st.id, st.created_at, st.for_user, st.token,
 FROM session_tokens st
 JOIN users u ON st.for_user = u.id
 WHERE token = $1
-    AND st.created_at > now() - interval '30 days'
+  AND expires_at > CURRENT_TIMESTAMP
 `
 
 type LookupSessionTokenWithUserRow struct {
 	ID             uuid.UUID
-	CreatedAt      pgtype.Timestamptz
+	CreatedAt      time.Time
 	ForUser        uuid.UUID
 	Token          string
+	ExpiresAt      time.Time
 	UserID         uuid.UUID
-	UserCreatedAt  pgtype.Timestamptz
+	UserCreatedAt  time.Time
 	UserUsername   string
 	UserPwHashType PwHashTypeT
 	UserPwHash     string
@@ -113,6 +131,7 @@ func (q *Queries) LookupSessionTokenWithUser(ctx context.Context, token string) 
 		&i.CreatedAt,
 		&i.ForUser,
 		&i.Token,
+		&i.ExpiresAt,
 		&i.UserID,
 		&i.UserCreatedAt,
 		&i.UserUsername,
@@ -120,4 +139,20 @@ func (q *Queries) LookupSessionTokenWithUser(ctx context.Context, token string) 
 		&i.UserPwHash,
 	)
 	return i, err
+}
+
+const updateSessionTokenExpiry = `-- name: UpdateSessionTokenExpiry :exec
+UPDATE session_tokens
+SET expires_at = $2
+WHERE id = $1
+`
+
+type UpdateSessionTokenExpiryParams struct {
+	ID        uuid.UUID
+	ExpiresAt time.Time
+}
+
+func (q *Queries) UpdateSessionTokenExpiry(ctx context.Context, arg UpdateSessionTokenExpiryParams) error {
+	_, err := q.db.Exec(ctx, updateSessionTokenExpiry, arg.ID, arg.ExpiresAt)
+	return err
 }

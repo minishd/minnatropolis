@@ -7,9 +7,9 @@ package queries
 import (
 	"database/sql/driver"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type PwHashTypeT string
@@ -55,14 +55,15 @@ func (ns NullPwHashTypeT) Value() (driver.Value, error) {
 
 type SessionToken struct {
 	ID        uuid.UUID
-	CreatedAt pgtype.Timestamptz
+	CreatedAt time.Time
 	ForUser   uuid.UUID
 	Token     string
+	ExpiresAt time.Time
 }
 
 type User struct {
 	ID         uuid.UUID
-	CreatedAt  pgtype.Timestamptz
+	CreatedAt  time.Time
 	Username   string
 	PwHashType PwHashTypeT
 	PwHash     string

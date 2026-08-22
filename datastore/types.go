@@ -39,7 +39,7 @@ type User struct {
 func dbUserToApp(in queries.User) *User {
 	return &User{
 		ID:         in.ID,
-		CreatedAt:  in.CreatedAt.Time,
+		CreatedAt:  in.CreatedAt,
 		Username:   in.Username,
 		PwHashType: dbPwHashTypeToApp(in.PwHashType),
 		PwHash:     in.PwHash,
@@ -56,10 +56,10 @@ type SessionToken struct {
 func dbSessionTokenWithUserToApp(in queries.LookupSessionTokenWithUserRow) *SessionToken {
 	return &SessionToken{
 		ID:        in.ID,
-		CreatedAt: in.CreatedAt.Time,
+		CreatedAt: in.CreatedAt,
 		ForUser: &User{
 			ID:         in.UserID,
-			CreatedAt:  in.UserCreatedAt.Time,
+			CreatedAt:  in.UserCreatedAt,
 			Username:   in.UserUsername,
 			PwHashType: dbPwHashTypeToApp(in.UserPwHashType),
 			PwHash:     in.UserPwHash,

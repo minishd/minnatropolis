@@ -3,6 +3,7 @@ package datastore
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgerrcode"
@@ -73,10 +74,11 @@ func (ds *DataStore) GetUserByUsername(ctx context.Context, username string) (*U
 	return dbUserToApp(user), nil
 }
 
-func (ds *DataStore) InsertSessionToken(ctx context.Context, forUser uuid.UUID, token string) error {
+func (ds *DataStore) InsertSessionToken(ctx context.Context, forUser uuid.UUID, token string, expiresAt time.Time) error {
 	err := ds.q.InsertSessionToken(ctx, queries.InsertSessionTokenParams{
-		ForUser: forUser,
-		Token:   token,
+		ForUser:   forUser,
+		Token:     token,
+		ExpiresAt: expiresAt,
 	})
 	// Token collisions not accounted for..
 	if err != nil {
@@ -101,4 +103,18 @@ func (ds *DataStore) LookupSessionToken(ctx context.Context, token string) (*Ses
 
 func (ds *DataStore) DeleteSessionToken(ctx context.Context, id uuid.UUID) error {
 	return ds.q.DeleteSessionToken(ctx, id)
+}
+
+func (ds *DataStore) ClearOtherSessionTokensForUser(ctx context.Context, forUser, exceptFor uuid.UUID) error {
+	return ds.q.ClearOtherSessionTokensForUser(ctx, queries.ClearOtherSessionTokensForUserParams{
+		ForUser: forUser,
+		ID:      exceptFor,
+	})
+}
+
+func (ds *DataStore) UpdateSessionTokenExpiry(ctx context.Context, id uuid.UUID, expiresAt time.Time) error {
+	return ds.q.UpdateSessionTokenExpiry(ctx, queries.UpdateSessionTokenExpiryParams{
+		ID:        id,
+		ExpiresAt: expiresAt,
+	})
 }

@@ -50,6 +50,8 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	authMux.Handle("POST /register", registerLimiter.checkRateLimit(ah.handleRegister))
 	authMux.Handle("POST /login", loginLimiter.checkRateLimit(ah.handleLogin))
 	authMux.Handle("POST /logout", requireAuth(ds, ah.handleLogout))
+	authMux.Handle("POST /logout-others", requireAuth(ds, ah.handleLogoutOthers))
+	authMux.Handle("POST /renew", requireAuth(ds, ah.handleRenew))
 	authMux.Handle("GET /whoami", requireAuth(ds, ah.handleWhoami))
 
 	// Set routes
