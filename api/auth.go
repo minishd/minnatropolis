@@ -16,21 +16,6 @@ type authHandlers struct {
 	ds *datastore.DataStore
 }
 
-// Session handler wrapper for authentication
-func (h *authHandlers) requireAuth(next sessionHandler) handleError {
-	return func(w http.ResponseWriter, r *http.Request) (err error) {
-		session, err := getAuth(h.ds, r)
-		if err != nil {
-			return
-		}
-		if session == nil {
-			return weberrors.ErrUnauthorized
-		}
-
-		return next(w, r, session)
-	}
-}
-
 // Helper function that generates a session token for a user
 // and returns its string value
 func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID) (token string, err error) {
