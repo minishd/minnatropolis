@@ -52,7 +52,7 @@ func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request, sess
 		Username string
 	}
 
-	sendRes(w, http.StatusOK, whoamiRes{session.ForUser.Username})
+	sendResOK(w, whoamiRes{session.ForUser.Username})
 	return
 }
 
@@ -69,7 +69,7 @@ func (h *authHandlers) handleLogout(w http.ResponseWriter, r *http.Request, sess
 		return
 	}
 
-	sendRes(w, http.StatusOK, logoutRes{true})
+	sendResOK(w, logoutRes{true})
 	return err
 }
 
@@ -116,7 +116,7 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 	if err != nil {
 		return
 	}
-	sendRes(w, http.StatusOK, registerRes{token})
+	sendResOK(w, registerRes{token})
 
 	return
 }
@@ -163,7 +163,7 @@ func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err 
 	if err != nil {
 		return
 	}
-	sendRes(w, http.StatusOK, loginRes{token})
+	sendResOK(w, loginRes{token})
 
 	return
 }

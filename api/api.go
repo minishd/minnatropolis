@@ -143,6 +143,11 @@ func sendRes[Res any](w http.ResponseWriter, status int, res Res) (err error) {
 	return
 }
 
+// Send back a JSON response with status `200 OK`
+func sendResOK[Res any](w http.ResponseWriter, res Res) error {
+	return sendRes(w, http.StatusOK, res)
+}
+
 // Middleware that catches errors, conditionally logs,
 // and sends back an appropriate HTTP response
 //
