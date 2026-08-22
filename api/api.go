@@ -49,8 +49,8 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 
 	authMux.Handle("POST /register", registerLimiter.checkRateLimit(ah.handleRegister))
 	authMux.Handle("POST /login", loginLimiter.checkRateLimit(ah.handleLogin))
-	authMux.Handle("POST /logout", ah.requireAuth(ah.handleLogout))
-	authMux.Handle("GET /whoami", ah.requireAuth(ah.handleWhoami))
+	authMux.Handle("POST /logout", requireAuth(ds, ah.handleLogout))
+	authMux.Handle("GET /whoami", requireAuth(ds, ah.handleWhoami))
 
 	// Set routes
 	mux.HandleFunc("GET /room", func(w http.ResponseWriter, r *http.Request) {
@@ -95,6 +95,21 @@ func getAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionTok
 	}
 
 	return
+}
+
+// Session handler wrapper for authentication
+func requireAuth(ds *datastore.DataStore, next sessionHandler) handleError {
+	return func(w http.ResponseWriter, r *http.Request) (err error) {
+		session, err := getAuth(ds, r)
+		if err != nil {
+			return
+		}
+		if session == nil {
+			return weberrors.ErrUnauthorized
+		}
+
+		return next(w, r, session)
+	}
 }
 
 // Parses the body of a request from JSON
