@@ -33,12 +33,18 @@ CREATE TABLE session_tokens (
     id           UUID           PRIMARY KEY DEFAULT uuidv7 (),
     created_at   TIMESTAMPTZ    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     for_user     UUID           NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    token        TEXT           UNIQUE NOT NULL
+    token        TEXT           UNIQUE NOT NULL,
+    expires_at   TIMESTAMPTZ    NOT NULL
 );
 
 -- why: looking up session tokens for api requests
 CREATE INDEX idx_session_tokens__token
 ON session_tokens (token);
+
+-- why: clearing all of a user's session tokens
+CREATE INDEX idx_session_tokens__for_user
+ON session_tokens (for_user);
+
 
 -- +goose Down
 --/// ...

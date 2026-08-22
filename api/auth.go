@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"net/http"
+	"time"
 
 	"github.com/alexedwards/argon2id"
 	"github.com/google/uuid"
@@ -16,39 +17,36 @@ type authHandlers struct {
 	ds *datastore.DataStore
 }
 
+const sessionTokenLifetime = time.Hour * 24 * 30
+
+func sessionTokenExpiryNow() time.Time {
+	return time.Now().Add(sessionTokenLifetime)
+}
+
 // Helper function that generates a session token for a user
 // and returns its string value
 func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID) (token string, err error) {
 	// Generate token string
 	// then try to add it to DB
 	token = rand.Text()
-	err = h.ds.InsertSessionToken(ctx, forUser, token)
+	expiresAt := sessionTokenExpiryNow()
+	err = h.ds.InsertSessionToken(ctx, forUser, token, expiresAt)
 	if err != nil {
 		return
 	}
+
 	// Successful
 	return
 }
 
-// Test route that should return the requester's username
-func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request) (err error) {
+// Route that returns the requester's username
+// (Needs authentication)
+func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type whoamiRes struct {
 		Username string
 	}
 
-	// Get auth
-	st, err := getAuth(h.ds, r)
-	if err != nil {
-		return
-	}
-
-	// Say who
-	if st != nil {
-		err = sendRes(w, whoamiRes{st.ForUser.Username})
-	} else {
-		err = sendRes(w, whoamiRes{"who are you"})
-	}
-
+	sendResOK(w, whoamiRes{session.ForUser.Username})
 	return
 }
 
@@ -56,7 +54,7 @@ func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request) (err
 func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (err error) {
 	type registerReq struct {
 		Username string `validate:"required"`
-		Password string `validate:"required"`
+		Password string `validate:"required,min=8,max=128"`
 	}
 	type registerRes struct {
 		InitialToken string
@@ -95,8 +93,8 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 	if err != nil {
 		return
 	}
-	err = sendRes(w, registerRes{token})
 
+	sendResOK(w, registerRes{token})
 	return
 }
 
@@ -104,7 +102,7 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err error) {
 	type loginReq struct {
 		Username string `validate:"required"`
-		Password string `validate:"required"`
+		Password string `validate:"required,min=8,max=128"`
 	}
 	type loginRes struct {
 		Token string
@@ -142,7 +140,57 @@ func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err 
 	if err != nil {
 		return
 	}
-	err = sendRes(w, loginRes{token})
 
+	sendResOK(w, loginRes{token})
+	return
+}
+
+// Handles logging out of accounts
+// (Needs authentication)
+func (h *authHandlers) handleLogout(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	type logoutRes struct {
+		Success bool
+	}
+
+	ctx := r.Context()
+	err = h.ds.DeleteSessionToken(ctx, session.ID)
+	if err != nil {
+		return
+	}
+
+	sendResOK(w, logoutRes{true})
+	return
+}
+
+// Signs out all other sessions besides the current
+func (h *authHandlers) handleLogoutOthers(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	type logoutOthersRes struct {
+		Success bool
+	}
+
+	ctx := r.Context()
+	err = h.ds.ClearOtherSessionTokensForUser(ctx, session.ForUser.ID, session.ID)
+	if err != nil {
+		return
+	}
+
+	sendResOK(w, logoutOthersRes{true})
+	return
+}
+
+// Renews the current session token
+func (h *authHandlers) handleRenew(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	type renewRes struct {
+		Success bool
+	}
+
+	ctx := r.Context()
+	expiresAt := sessionTokenExpiryNow()
+	err = h.ds.UpdateSessionTokenExpiry(ctx, session.ID, expiresAt)
+	if err != nil {
+		return
+	}
+
+	sendResOK(w, renewRes{true})
 	return
 }

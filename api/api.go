@@ -6,12 +6,22 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/weberrors"
 	"github.com/minishd/minnatropolis/datastore"
+	"golang.org/x/time/rate"
+)
+
+const (
+	registerRateLimitEvery = 5 * time.Minute
+	loginRateLimitEvery    = 20 * time.Second
+
+	registerRateLimitBurst = 5
+	loginRateLimitBurst    = 3
 )
 
 func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
@@ -32,9 +42,17 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	// Set routes (auth)
 	authMux := http.NewServeMux()
 	ah := &authHandlers{ds}
-	authMux.Handle("POST /register", handleError(ah.handleRegister))
-	authMux.Handle("POST /login", handleError(ah.handleLogin))
-	authMux.Handle("GET /whoami", handleError(ah.handleWhoami))
+
+	// Set limits (rate limiting)
+	registerLimiter := newLimiter(rate.Every(registerRateLimitEvery), registerRateLimitBurst)
+	loginLimiter := newLimiter(rate.Every(loginRateLimitEvery), loginRateLimitBurst)
+
+	authMux.Handle("POST /register", registerLimiter.checkRateLimit(ah.handleRegister))
+	authMux.Handle("POST /login", loginLimiter.checkRateLimit(ah.handleLogin))
+	authMux.Handle("POST /logout", requireAuth(ds, ah.handleLogout))
+	authMux.Handle("POST /logout-others", requireAuth(ds, ah.handleLogoutOthers))
+	authMux.Handle("POST /renew", requireAuth(ds, ah.handleRenew))
+	authMux.Handle("GET /whoami", requireAuth(ds, ah.handleWhoami))
 
 	// Set routes
 	mux.HandleFunc("GET /room", func(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +73,12 @@ var validate *validator.Validate = validator.New(
 	validator.WithTagNameFuncBlankOmit(),
 )
 
+// Response type that is sent back to the client
+// if their request didn't succeed
+type errorRes struct {
+	Error string
+}
+
 // Reads and looks up a provided session token
 func getAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionToken, err error) {
 	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
@@ -73,6 +97,21 @@ func getAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionTok
 	}
 
 	return
+}
+
+// Session handler wrapper for authentication
+func requireAuth(ds *datastore.DataStore, next sessionHandler) handleError {
+	return func(w http.ResponseWriter, r *http.Request) (err error) {
+		session, err := getAuth(ds, r)
+		if err != nil {
+			return
+		}
+		if session == nil {
+			return weberrors.ErrUnauthorized
+		}
+
+		return next(w, r, session)
+	}
 }
 
 // Parses the body of a request from JSON
@@ -113,11 +152,17 @@ func parseReq[Req any](r *http.Request) (req Req, err error) {
 }
 
 // Send back a JSON response
-func sendRes[Res any](w http.ResponseWriter, res Res) (err error) {
+func sendRes[Res any](w http.ResponseWriter, status int, res Res) (err error) {
 	// Set Content-Type, encode & send
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 	err = json.NewEncoder(w).Encode(res)
 	return
+}
+
+// Send back a JSON response with status `200 OK`
+func sendResOK[Res any](w http.ResponseWriter, res Res) error {
+	return sendRes(w, http.StatusOK, res)
 }
 
 // Middleware that catches errors, conditionally logs,
@@ -127,11 +172,9 @@ func sendRes[Res any](w http.ResponseWriter, res Res) (err error) {
 // which can then be chained with other middlewares
 type handleError func(w http.ResponseWriter, r *http.Request) (err error)
 
-// Response type that is sent back to the client
-// if their request didn't succeed
-type errorRes struct {
-	Error string
-}
+// Request handler that additionally receives the
+// session of the user that sent the request
+type sessionHandler func(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error)
 
 func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Call req. handler
@@ -149,8 +192,7 @@ func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Set status code & send back error response
-		w.WriteHeader(werr.Status)
-		if err := sendRes(w, errorRes{werr.Note}); err != nil {
+		if err := sendRes(w, werr.Status, errorRes{werr.Note}); err != nil {
 			log.Println("couldn't send error response:", err)
 		}
 	}
