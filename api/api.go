@@ -21,7 +21,7 @@ const (
 
 func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	// Set up upgrader
-	rh := room.NewHandler(guardPSK)
+	rh := room.NewHandler(ds, guardPSK)
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
 		// Don't process each connection's messages in parallel
 		// If we do, the guard message counter check will start
@@ -31,7 +31,7 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 		Recovery:        gws.Recovery,
 		SubProtocols:    []string{"binary"}, // If unspecified, Chromium instantly disconnects
 
-		Authorize: room.Authorize,
+		Authorize: rh.Authorize,
 	})
 
 	// Set routes (auth)

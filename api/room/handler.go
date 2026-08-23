@@ -15,19 +15,22 @@ import (
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room/emitter"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
+	"github.com/minishd/minnatropolis/datastore"
 )
 
 // Shared handler for room websocket events
 type Handler struct {
 	guardPSK []byte
 
+	ds *datastore.DataStore
 	em *emitter.Emitter[int32, *User]
 }
 
-func NewHandler(guardPSK []byte) *Handler {
+func NewHandler(ds *datastore.DataStore, guardPSK []byte) *Handler {
 	return &Handler{
 		guardPSK: guardPSK,
 
+		ds: ds,
 		em: emitter.New[int32, *User](),
 	}
 }
@@ -88,9 +91,7 @@ const (
 	defaultSysName      = ""
 )
 
-// In the future, this should check tokens probably
-// (Either here or in [Handler.OnOpen])
-func Authorize(r *http.Request, session gws.SessionStorage) bool {
+func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	// Get room ID
 	roomID, err := strconv.Atoi(r.URL.Query().Get("id"))
 	if err != nil {
@@ -103,6 +104,21 @@ func Authorize(r *http.Request, session gws.SessionStorage) bool {
 	// Get token
 	token := r.URL.Query().Get("token")
 
+	// Look up token
+	ctx := r.Context()
+	st, _ := h.ds.LookupSessionToken(ctx, token)
+
+	// Get player fields
+	username := "" // set it empty, guests are name-less.
+	accountUUID := uuid.NewString()
+	loggedIn := false
+
+	if st != nil {
+		username = st.ForUser.Username
+		accountUUID = st.ForUser.ID.String()
+		loggedIn = true
+	}
+
 	// Make guard key
 	guardKey := rand.Uint32()
 	guardKeyBytes := make([]byte, 4)
@@ -111,8 +127,9 @@ func Authorize(r *http.Request, session gws.SessionStorage) bool {
 	// Set up data
 	session.Store("cd", &clientData{
 		cID:           cIDCounter.Add(1),
-		name:          token,            // Temporary
-		accountUUID:   uuid.NewString(), // Temporary
+		name:          username,
+		accountUUID:   accountUUID,
+		loggedIn:      loggedIn,
 		guardKey:      guardKey,
 		guardKeyBytes: guardKeyBytes,
 
