@@ -14,9 +14,11 @@ import (
 const (
 	registerRateLimitEvery = 5 * time.Minute
 	loginRateLimitEvery    = 20 * time.Second
+	roomRateLimitEvery     = 5 * time.Second
 
 	registerRateLimitBurst = 5
 	loginRateLimitBurst    = 3
+	roomRateLimitBurst     = 30
 )
 
 func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
@@ -41,6 +43,7 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	// Set limits (rate limiting)
 	registerLimiter := web.NewLimiter(rate.Every(registerRateLimitEvery), registerRateLimitBurst)
 	loginLimiter := web.NewLimiter(rate.Every(loginRateLimitEvery), loginRateLimitBurst)
+	roomLimiter := web.NewLimiter(rate.Every(roomRateLimitEvery), roomRateLimitBurst)
 
 	authMux.Handle("POST /register", registerLimiter.Check(ah.handleRegister))
 	authMux.Handle("POST /login", loginLimiter.Check(ah.handleLogin))
@@ -50,13 +53,14 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	authMux.Handle("GET /whoami", web.RequireAuth(ds, ah.handleWhoami))
 
 	// Set routes
-	mux.HandleFunc("GET /room", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("GET /room", roomLimiter.Check(func(w http.ResponseWriter, r *http.Request) error {
 		socket, err := upgrader.Upgrade(w, r)
 		if err != nil {
-			return
+			return nil
 		}
 		go socket.ReadLoop()
-	})
+		return nil
+	}))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("api unconscious"))
