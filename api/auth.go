@@ -8,7 +8,7 @@ import (
 
 	"github.com/alexedwards/argon2id"
 	"github.com/google/uuid"
-	"github.com/minishd/minnatropolis/api/weberrors"
+	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
 )
 
@@ -46,7 +46,7 @@ func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request, sess
 		Username string
 	}
 
-	sendResOK(w, whoamiRes{session.ForUser.Username})
+	web.SendResOK(w, whoamiRes{session.ForUser.Username})
 	return
 }
 
@@ -61,7 +61,7 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 	}
 
 	// Parse request
-	req, err := parseReq[registerReq](r)
+	req, err := web.ParseReq[registerReq](r)
 	if err != nil {
 		return
 	}
@@ -76,11 +76,11 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 	ctx := r.Context()
 	user, err := h.ds.CreateUser(ctx, req.Username, pwHash, datastore.PhtArgon2id)
 	if err == datastore.ErrNotUnique {
-		err = weberrors.ErrUsernameTaken
+		err = web.ErrUsernameTaken
 		return
 	}
 	if err == datastore.ErrFailsCheck {
-		err = weberrors.ErrUsernameInvalid
+		err = web.ErrUsernameInvalid
 		return
 	}
 	if err != nil {
@@ -94,7 +94,7 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 		return
 	}
 
-	sendResOK(w, registerRes{token})
+	web.SendResOK(w, registerRes{token})
 	return
 }
 
@@ -109,7 +109,7 @@ func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err 
 	}
 
 	// Parse request
-	req, err := parseReq[loginReq](r)
+	req, err := web.ParseReq[loginReq](r)
 	if err != nil {
 		return
 	}
@@ -121,7 +121,7 @@ func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err 
 		return
 	}
 	if user == nil {
-		err = weberrors.ErrInvalidCredentials
+		err = web.ErrInvalidCredentials
 		return
 	}
 
@@ -131,7 +131,7 @@ func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err 
 		return
 	}
 	if !match {
-		err = weberrors.ErrInvalidCredentials
+		err = web.ErrInvalidCredentials
 		return
 	}
 
@@ -141,7 +141,7 @@ func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err 
 		return
 	}
 
-	sendResOK(w, loginRes{token})
+	web.SendResOK(w, loginRes{token})
 	return
 }
 
@@ -158,7 +158,7 @@ func (h *authHandlers) handleLogout(w http.ResponseWriter, r *http.Request, sess
 		return
 	}
 
-	sendResOK(w, logoutRes{true})
+	web.SendResOK(w, logoutRes{true})
 	return
 }
 
@@ -174,7 +174,7 @@ func (h *authHandlers) handleLogoutOthers(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	sendResOK(w, logoutOthersRes{true})
+	web.SendResOK(w, logoutOthersRes{true})
 	return
 }
 
@@ -191,6 +191,6 @@ func (h *authHandlers) handleRenew(w http.ResponseWriter, r *http.Request, sessi
 		return
 	}
 
-	sendResOK(w, renewRes{true})
+	web.SendResOK(w, renewRes{true})
 	return
 }

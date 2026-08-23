@@ -66,12 +66,3 @@ func dbSessionTokenWithUserToApp(in queries.LookupSessionTokenWithUserRow) *Sess
 		},
 	}
 }
-
-// func dbSessionTokenToApp(in queries.SessionToken) *SessionToken {
-// 	return &SessionToken{
-// 		ID:        in.ID,
-// 		CreatedAt: in.CreatedAt.Time,
-// 		ForUser:   in.ForUser,
-// 		Token:     in.Token,
-// 	}
-// }

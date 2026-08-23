@@ -1,4 +1,4 @@
-package api
+package web
 
 import (
 	"net"
@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/minishd/minnatropolis/api/weberrors"
 	"golang.org/x/time/rate"
 )
 
@@ -23,7 +22,7 @@ type client struct {
 
 // Rate-limits spam that may occur from an
 // evil source.
-type limiter struct {
+type Limiter struct {
 	byIP  map[string]*client
 	mut   sync.Mutex
 	rate  rate.Limit
@@ -32,8 +31,8 @@ type limiter struct {
 
 // Makes a limiter that refills at r with a burst of b
 // and starts its background sweeper.
-func newLimiter(r rate.Limit, b int) *limiter {
-	l := &limiter{
+func NewLimiter(r rate.Limit, b int) *Limiter {
+	l := &Limiter{
 		byIP:  make(map[string]*client),
 		rate:  r,
 		burst: b,
@@ -43,7 +42,7 @@ func newLimiter(r rate.Limit, b int) *limiter {
 }
 
 // Returns the bucket for an IP or makes a new one if they're fresh.
-func (l *limiter) getOrCreate(ip string) *rate.Limiter {
+func (l *Limiter) getOrCreate(ip string) *rate.Limiter {
 	l.mut.Lock()
 	defer l.mut.Unlock()
 
@@ -60,7 +59,7 @@ func (l *limiter) getOrCreate(ip string) *rate.Limiter {
 
 // Drops callers we haven't heard from in a while.
 // (Called in [limiter.sweepLoop])
-func (l *limiter) sweep() {
+func (l *Limiter) sweep() {
 	l.mut.Lock()
 	defer l.mut.Unlock()
 
@@ -73,7 +72,7 @@ func (l *limiter) sweep() {
 
 // Sweeps on a ticker for the life of the process.
 // (meant to be started using the go statement in [newLimiter])
-func (l *limiter) sweepLoop() {
+func (l *Limiter) sweepLoop() {
 	ticker := time.NewTicker(rateLimitSweepEvery)
 	defer ticker.Stop()
 
@@ -84,7 +83,7 @@ func (l *limiter) sweepLoop() {
 
 // Middleware that caps how often a single IP can hit an endpoint.
 // Answers with [weberrors.ErrTooManyRequests] once their bucket runs dry.
-func (l *limiter) checkRateLimit(next handleError) handleError {
+func (l *Limiter) Check(next handleError) handleError {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
@@ -93,7 +92,7 @@ func (l *limiter) checkRateLimit(next handleError) handleError {
 
 		rateLimiter := l.getOrCreate(host)
 		if !rateLimiter.Allow() {
-			return weberrors.ErrTooManyRequests
+			return ErrTooManyRequests
 		}
 
 		return next(w, r)

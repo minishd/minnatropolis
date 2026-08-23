@@ -1,17 +1,12 @@
 package api
 
 import (
-	"encoding/json"
-	"errors"
-	"log"
 	"net/http"
-	"strings"
 	"time"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room"
-	"github.com/minishd/minnatropolis/api/weberrors"
+	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
 	"golang.org/x/time/rate"
 )
@@ -44,15 +39,15 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	ah := &authHandlers{ds}
 
 	// Set limits (rate limiting)
-	registerLimiter := newLimiter(rate.Every(registerRateLimitEvery), registerRateLimitBurst)
-	loginLimiter := newLimiter(rate.Every(loginRateLimitEvery), loginRateLimitBurst)
+	registerLimiter := web.NewLimiter(rate.Every(registerRateLimitEvery), registerRateLimitBurst)
+	loginLimiter := web.NewLimiter(rate.Every(loginRateLimitEvery), loginRateLimitBurst)
 
-	authMux.Handle("POST /register", registerLimiter.checkRateLimit(ah.handleRegister))
-	authMux.Handle("POST /login", loginLimiter.checkRateLimit(ah.handleLogin))
-	authMux.Handle("POST /logout", requireAuth(ds, ah.handleLogout))
-	authMux.Handle("POST /logout-others", requireAuth(ds, ah.handleLogoutOthers))
-	authMux.Handle("POST /renew", requireAuth(ds, ah.handleRenew))
-	authMux.Handle("GET /whoami", requireAuth(ds, ah.handleWhoami))
+	authMux.Handle("POST /register", registerLimiter.Check(ah.handleRegister))
+	authMux.Handle("POST /login", loginLimiter.Check(ah.handleLogin))
+	authMux.Handle("POST /logout", web.RequireAuth(ds, ah.handleLogout))
+	authMux.Handle("POST /logout-others", web.RequireAuth(ds, ah.handleLogoutOthers))
+	authMux.Handle("POST /renew", web.RequireAuth(ds, ah.handleRenew))
+	authMux.Handle("GET /whoami", web.RequireAuth(ds, ah.handleWhoami))
 
 	// Set routes
 	mux.HandleFunc("GET /room", func(w http.ResponseWriter, r *http.Request) {
@@ -66,134 +61,4 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("api unconscious"))
 	})
-}
-
-var validate *validator.Validate = validator.New(
-	validator.WithRequiredStructEnabled(),
-	validator.WithTagNameFuncBlankOmit(),
-)
-
-// Response type that is sent back to the client
-// if their request didn't succeed
-type errorRes struct {
-	Error string
-}
-
-// Reads and looks up a provided session token
-func getAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionToken, err error) {
-	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
-
-	// Make sure prefix is present
-	token, found := strings.CutPrefix(authorization, "Session ")
-	if !found {
-		return
-	}
-
-	// Look up token
-	ctx := r.Context()
-	st, err = ds.LookupSessionToken(ctx, token)
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-// Session handler wrapper for authentication
-func requireAuth(ds *datastore.DataStore, next sessionHandler) handleError {
-	return func(w http.ResponseWriter, r *http.Request) (err error) {
-		session, err := getAuth(ds, r)
-		if err != nil {
-			return
-		}
-		if session == nil {
-			return weberrors.ErrUnauthorized
-		}
-
-		return next(w, r, session)
-	}
-}
-
-// Parses the body of a request from JSON
-func parseReq[Req any](r *http.Request) (req Req, err error) {
-	// Only proceed if Content-Type is JSON
-	// TODO: make this more lenient?
-	contentType := r.Header.Get("Content-Type")
-	if contentType != "application/json" {
-		err = weberrors.ErrNotJSON
-		return
-	}
-
-	// Decode body
-	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
-	if err = dec.Decode(&req); err != nil {
-		err = weberrors.ErrBodyMalformed
-		return
-	}
-
-	// Validate
-	if err = validate.Struct(req); err != nil {
-		// Is the struct tag just invalid?
-		if _, ok := errors.AsType[*validator.InvalidValidationError](err); ok {
-			// `validate` struct tag is malformed.
-			// This is our fault and should be fixed
-			// before shipping
-			panic(err)
-		}
-
-		// No the struct tag wasn't invalid,
-		// so it is the user's fault
-		err = weberrors.ErrBodyInvalid
-		return
-	}
-
-	return
-}
-
-// Send back a JSON response
-func sendRes[Res any](w http.ResponseWriter, status int, res Res) (err error) {
-	// Set Content-Type, encode & send
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	err = json.NewEncoder(w).Encode(res)
-	return
-}
-
-// Send back a JSON response with status `200 OK`
-func sendResOK[Res any](w http.ResponseWriter, res Res) error {
-	return sendRes(w, http.StatusOK, res)
-}
-
-// Middleware that catches errors, conditionally logs,
-// and sends back an appropriate HTTP response
-//
-// Also kind of wraps an error-returning handler into a normal [http.Handler],
-// which can then be chained with other middlewares
-type handleError func(w http.ResponseWriter, r *http.Request) (err error)
-
-// Request handler that additionally receives the
-// session of the user that sent the request
-type sessionHandler func(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error)
-
-func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Call req. handler
-	if err := handler(w, r); err != nil {
-		// An error was returned
-		// See if it's a [weberrors.WebError],
-		// werr wrote down status codes and error messages
-		// for those that werr want to return
-		werr, ok := errors.AsType[*weberrors.WebError](err)
-		if !ok {
-			// We could not cast it to a [weberrors.WebError]
-			// Log it, and fall back to generic "server error" message
-			log.Println("handler raised error:", err)
-			werr = weberrors.ErrServerInternal
-		}
-
-		// Set status code & send back error response
-		if err := sendRes(w, werr.Status, errorRes{werr.Note}); err != nil {
-			log.Println("couldn't send error response:", err)
-		}
-	}
 }
