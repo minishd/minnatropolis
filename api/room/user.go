@@ -18,7 +18,6 @@ type clientData struct {
 	rank        int32
 	loggedIn    bool
 	badge       string
-	medals      [5]int32
 
 	guardKey, guardCount uint32
 	guardKeyBytes        []byte // so we don't need to recompute
@@ -76,7 +75,7 @@ func (u *User) GetIntroMessages() (msgs []any) {
 	msgs = append(msgs, pt.ConnectS2C{
 		ID: d.cID, UUID: d.accountUUID,
 		Rank: d.rank, IsLoggedIn: d.loggedIn,
-		Badge: d.badge, Medals: d.medals,
+		Badge: d.badge,
 	})
 
 	if d.x != defaultXY || d.y != defaultXY {

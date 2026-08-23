@@ -15,7 +15,6 @@ type SyncPlayerDataS2C struct {
 	Rank       int32
 	IsLoggedIn bool
 	Badge      string
-	Medals     [5]int32
 }
 
 type RoomInfoS2C struct {
@@ -28,7 +27,6 @@ type ConnectS2C struct {
 	Rank       int32
 	IsLoggedIn bool
 	Badge      string
-	Medals     [5]int32
 }
 
 type DisconnectS2C struct {
