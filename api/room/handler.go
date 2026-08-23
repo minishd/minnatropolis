@@ -205,7 +205,6 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 		Rank:       d.rank,
 		IsLoggedIn: d.loggedIn,
 		Badge:      d.badge,
-		Medals:     d.medals,
 	})
 
 	// Add to room
