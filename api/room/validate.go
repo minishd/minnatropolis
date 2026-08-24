@@ -7,12 +7,19 @@ import (
 )
 
 const (
+	minSpeed = 0
+	maxSpeed = 10
+
 	minRoomID = 1
 	maxRoomID = 5000
 
 	minFacing = 0
 	maxFacing = 3
 )
+
+func isValidSpeed(speed int32) bool {
+	return speed >= minSpeed && speed <= maxSpeed
+}
 
 func isValidRoomID(id int32) bool {
 	return id >= minRoomID && id <= maxRoomID
