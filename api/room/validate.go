@@ -10,12 +10,19 @@ const (
 	minSpeed = 0
 	maxSpeed = 10
 
+	minTransparency = 0
+	maxTransparency = 7
+
 	minRoomID = 1
 	maxRoomID = 5000
 
 	minFacing = 0
 	maxFacing = 3
 )
+
+func isValidTransparency(transparency int32) bool {
+	return transparency >= minTransparency && transparency <= maxTransparency
+}
 
 func isValidSpeed(speed int32) bool {
 	return speed >= minSpeed && speed <= maxSpeed
