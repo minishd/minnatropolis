@@ -7,18 +7,39 @@ import (
 )
 
 const (
+	minRoomID = 1
+	maxRoomID = 5000
+
+	minFacing = 0
+	maxFacing = 3
+
 	minSpeed = 0
 	maxSpeed = 10
 
 	minTransparency = 0
 	maxTransparency = 7
 
-	minRoomID = 1
-	maxRoomID = 5000
+	minSoundVolume = 0
+	maxSoundVolume = 100
 
-	minFacing = 0
-	maxFacing = 3
+	minSoundTempo = 10
+	maxSoundTempo = 400
+
+	minSoundBalance = 0
+	maxSoundBalance = 100
 )
+
+func isValidSoundBalance(balance int32) bool {
+	return balance >= minSoundBalance && balance <= maxSoundBalance
+}
+
+func isValidSoundTempo(tempo int32) bool {
+	return tempo >= minSoundTempo && tempo <= maxSoundTempo
+}
+
+func isValidSoundVolume(volume int32) bool {
+	return volume >= minSoundVolume && volume <= maxSoundVolume
+}
 
 func isValidTransparency(transparency int32) bool {
 	return transparency >= minTransparency && transparency <= maxTransparency
@@ -28,12 +49,12 @@ func isValidSpeed(speed int32) bool {
 	return speed >= minSpeed && speed <= maxSpeed
 }
 
-func isValidRoomID(id int32) bool {
-	return id >= minRoomID && id <= maxRoomID
-}
-
 func isValidFacingDirection(facing int32) bool {
 	return facing >= minFacing && facing <= maxFacing
+}
+
+func isValidRoomID(id int32) bool {
+	return id >= minRoomID && id <= maxRoomID
 }
 
 // Validates requests and returns an error if
