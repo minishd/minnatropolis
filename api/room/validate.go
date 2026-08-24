@@ -30,6 +30,15 @@ const (
 	maxSoundBalance = 100
 )
 
+// No upper positions as the server doesn't know them.
+func isValidSpriteIndex(index int32) bool {
+	return index >= 0
+}
+
+func isValidPosition(x, y int32) bool {
+	return x >= 0 && y >= 0 || x <= 999_999 && y <= 999_999
+}
+
 func isValidSoundBalance(balance int32) bool {
 	return balance >= minSoundBalance && balance <= maxSoundBalance
 }
@@ -79,10 +88,14 @@ func (h *Handler) validateMessage(m any) error {
 		}
 
 	case pt.SpriteC2S:
-		// TBD
+		if !isValidSpriteIndex(m.Index) {
+			return fmt.Errorf("sprite index %d out of range", m.Index)
+		}
 
 	case pt.MainPlayerPosC2S:
-		// TBD
+		if !isValidPosition(m.X, m.Y) {
+			return fmt.Errorf("positions %d, %d out of range", m.X, m.Y)
+		}
 
 	case pt.TransparencyC2S:
 		if !isValidTransparency(m.Transparency) {
@@ -99,6 +112,7 @@ func (h *Handler) validateMessage(m any) error {
 		if !isValidSoundBalance(m.Balance) {
 			return fmt.Errorf("sound balance %d out of range", m.Balance)
 		}
+
 	}
 
 	return nil
