@@ -1,8 +1,6 @@
 package room
 
 import (
-	"errors"
-
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room/emitter"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
@@ -32,15 +30,6 @@ type clientData struct {
 	sprite       string
 	spriteIndex  int32
 	sysName      string
-}
-
-func (cd *clientData) setFacing(facing int32) (err error) {
-	if facing < 0 || facing > 3 {
-		err = errors.New("facing direction out of range")
-		return
-	}
-	cd.facing = facing
-	return
 }
 
 // Wrapper around a [gws.Conn].

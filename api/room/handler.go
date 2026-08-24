@@ -97,7 +97,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	if err != nil {
 		return false
 	}
-	if roomID < 1 || roomID > 5000 {
+	if !isValidRoomID(int32(roomID)) {
 		return false
 	}
 
@@ -235,10 +235,7 @@ func (h *Handler) processMessage(u *User, m any) (err error) {
 		h.shareToRoom(d, pt.SpriteS2C{ID: d.cID, Name: d.sprite, Index: d.spriteIndex})
 
 	case pt.FacingC2S:
-		err = d.setFacing(m.Direction)
-		if err != nil {
-			return
-		}
+		d.facing = m.Direction
 		h.shareToRoom(d, pt.FacingS2C{ID: d.cID, Direction: d.facing})
 
 	case pt.HiddenC2S:
@@ -303,6 +300,17 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 		log.Println("invalid packet")
 		return
 	}
+
+	// Validate everything first so a packet is applied entirely
+	// or not at all since a legitimate client will never send an
+	// invalid packet.
+	for _, msg := range msgs {
+		if err := h.validateMessage(msg); err != nil {
+			log.Println("invalid message:", err)
+			return
+		}
+	}
+
 	for _, msg := range msgs {
 		h.processMessage(s, msg)
 	}
