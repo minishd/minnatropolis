@@ -87,7 +87,15 @@ func (h *Handler) validateMessage(m any) error {
 			return fmt.Errorf("speed %d out of range", m.Speed)
 		}
 
+	case pt.SysNameC2S:
+		if !h.filters.HasSystem(m.Name) {
+			return fmt.Errorf("unknown system %q", m.Name)
+		}
+
 	case pt.SpriteC2S:
+		if !h.filters.HasSprite(m.Name) {
+			return fmt.Errorf("unknown sprite %q", m.Name)
+		}
 		if !isValidSpriteIndex(m.Index) {
 			return fmt.Errorf("sprite index %d out of range", m.Index)
 		}

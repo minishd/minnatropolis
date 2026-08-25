@@ -22,16 +22,18 @@ import (
 type Handler struct {
 	guardPSK []byte
 
-	ds *datastore.DataStore
-	em *emitter.Emitter[int32, *User]
+	ds      *datastore.DataStore
+	filters *Filters
+	em      *emitter.Emitter[int32, *User]
 }
 
-func NewHandler(ds *datastore.DataStore, guardPSK []byte) *Handler {
+func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *Filters) *Handler {
 	return &Handler{
 		guardPSK: guardPSK,
 
-		ds: ds,
-		em: emitter.New[int32, *User](),
+		ds:      ds,
+		filters: filters,
+		em:      emitter.New[int32, *User](),
 	}
 }
 

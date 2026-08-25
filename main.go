@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 	"github.com/minishd/minnatropolis/api"
+	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/datastore"
 	"github.com/pressly/goose/v3"
 )
@@ -31,6 +32,11 @@ func run(rootCtx context.Context) error {
 	listenOn := os.Getenv("LISTEN_ON")
 	dbConnect := os.Getenv("DB_CONNECT")
 	guardPSK, err := hex.DecodeString(os.Getenv("GUARD_PSK"))
+	if err != nil {
+		return err
+	}
+
+	filters, err := room.LoadFilters(os.Getenv("FILTER_INDEX_PATH"))
 	if err != nil {
 		return err
 	}
@@ -61,7 +67,7 @@ func run(rootCtx context.Context) error {
 
 	// Set up API
 	mux := http.NewServeMux()
-	api.AddRoutes(mux, guardPSK, ds)
+	api.AddRoutes(mux, guardPSK, ds, filters)
 
 	// Set up server
 	server := &http.Server{

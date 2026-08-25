@@ -21,9 +21,9 @@ const (
 	roomRateLimitBurst     = 30
 )
 
-func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore) {
+func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, filters *room.Filters) {
 	// Set up upgrader
-	rh := room.NewHandler(ds, guardPSK)
+	rh := room.NewHandler(ds, guardPSK, filters)
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
 		// Don't process each connection's messages in parallel
 		// If we do, the guard message counter check will start
