@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
-	"fmt"
 	"log"
 	"math/rand/v2"
 	"net/http"
@@ -95,11 +94,13 @@ const (
 
 func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	// Get room ID
-	roomID, err := strconv.Atoi(r.URL.Query().Get("id"))
+	roomID_, err := strconv.Atoi(r.URL.Query().Get("id"))
 	if err != nil {
 		return false
 	}
-	if !isValidRoomID(int32(roomID)) {
+	roomID := int32(roomID_)
+	if !h.filters.HasMap(roomID) {
+		// where are you going?
 		return false
 	}
 
@@ -135,7 +136,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		guardKey:      guardKey,
 		guardKeyBytes: guardKeyBytes,
 
-		roomID: int32(roomID),
+		roomID: roomID,
 		x:      defaultXY, y: defaultXY,
 		facing: defaultFacing,
 		speed:  defaultSpeed,
@@ -213,7 +214,7 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	h.changeRoom(s, d.roomID)
 }
 
-func (h *Handler) processMessage(u *User, m any) (err error) {
+func (h *Handler) processMessage(u *User, m any) {
 	d := u.getData()
 
 	switch m := m.(type) {
@@ -226,6 +227,16 @@ func (h *Handler) processMessage(u *User, m any) (err error) {
 		d.x = m.X
 		d.y = m.Y
 		h.shareToRoom(d, pt.MainPlayerPosS2C{ID: d.cID, X: d.x, Y: d.y})
+
+	case pt.TeleportC2S:
+		d.x = m.X
+		d.y = m.Y
+		h.shareToRoom(d, pt.MainPlayerPosS2C{ID: d.cID, X: d.x, Y: d.y})
+
+	case pt.JumpC2S:
+		d.x = m.X
+		d.y = m.Y
+		h.shareToRoom(d, pt.JumpS2C{ID: d.cID, X: d.x, Y: d.y})
 
 	case pt.SpeedC2S:
 		d.speed = m.Speed
@@ -255,11 +266,14 @@ func (h *Handler) processMessage(u *User, m any) (err error) {
 	case pt.SoundEffectC2S:
 		h.shareToRoom(d, pt.SoundEffectS2C{ID: d.cID, Name: m.Name, Volume: m.Volume, Tempo: m.Tempo, Balance: m.Balance})
 
-	default:
-		err = fmt.Errorf("unhandled msg %+v", m)
-	}
+	case pt.FlashC2S:
+		h.shareToRoom(d, pt.FlashS2C{ID: d.cID, R: m.R, G: m.G, B: m.B, Power: m.Power, Frames: m.Frames})
 
-	return
+	default:
+		// If we registered a message type,
+		// we should also be handling it
+		panic("unhandled message type")
+	}
 }
 
 func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
@@ -299,7 +313,7 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 	// ..
 	msgs, err := pt.Deserialize(m[8:])
 	if err != nil {
-		log.Println("invalid packet")
+		log.Println("invalid packet:", err)
 		return
 	}
 

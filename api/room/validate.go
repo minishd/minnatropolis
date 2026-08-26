@@ -8,8 +8,8 @@ import (
 
 // Ranges come from ynoproject/ynoserver
 const (
-	minRoomID = 1
-	maxRoomID = 5000
+	minXY = 0
+	maxXY = 500
 
 	minFacing = 0
 	maxFacing = 3
@@ -28,6 +28,12 @@ const (
 
 	minSoundBalance = 0
 	maxSoundBalance = 100
+
+	minRGB = 0
+	maxRGB = 255
+
+	minFlashPower  = 0
+	minFlashFrames = 0
 )
 
 // No upper positions as the server doesn't know them.
@@ -35,8 +41,8 @@ func isValidSpriteIndex(index int32) bool {
 	return index >= 0
 }
 
-func isValidPosition(x, y int32) bool {
-	return x >= 0 && y >= 0 || x <= 999_999 && y <= 999_999
+func isValidXY(p int32) bool {
+	return p >= minXY && p <= maxXY
 }
 
 func isValidSoundBalance(balance int32) bool {
@@ -63,8 +69,15 @@ func isValidFacingDirection(facing int32) bool {
 	return facing >= minFacing && facing <= maxFacing
 }
 
-func isValidRoomID(id int32) bool {
-	return id >= minRoomID && id <= maxRoomID
+func isValidRGB(x int32) bool {
+	return x >= minRGB && x <= maxRGB
+}
+
+func isValidFlashPower(power int32) bool {
+	return power >= minFlashPower
+}
+func isValidFlashFrames(frames int32) bool {
+	return frames >= minFlashFrames
 }
 
 // Validates requests and returns an error if
@@ -73,8 +86,8 @@ func (h *Handler) validateMessage(m any) error {
 	switch m := m.(type) {
 
 	case pt.SwitchRoomC2S:
-		if !isValidRoomID(m.RoomID) {
-			return fmt.Errorf("room id %d out of range", m.RoomID)
+		if !h.filters.HasMap(m.RoomID) {
+			return fmt.Errorf("unknown room id %d", m.RoomID)
 		}
 
 	case pt.FacingC2S:
@@ -101,7 +114,7 @@ func (h *Handler) validateMessage(m any) error {
 		}
 
 	case pt.MainPlayerPosC2S:
-		if !isValidPosition(m.X, m.Y) {
+		if !isValidXY(m.X) || !isValidXY(m.Y) {
 			return fmt.Errorf("positions %d, %d out of range", m.X, m.Y)
 		}
 
@@ -121,6 +134,16 @@ func (h *Handler) validateMessage(m any) error {
 			return fmt.Errorf("sound balance %d out of range", m.Balance)
 		}
 
+	case pt.FlashC2S:
+		if !isValidRGB(m.R) || !isValidRGB(m.G) || !isValidRGB(m.B) {
+			return fmt.Errorf("flash rgb %d,%d,%d out of range", m.R, m.G, m.B)
+		}
+		if !isValidFlashPower(m.Power) {
+			return fmt.Errorf("flash power %d out of range", m.Power)
+		}
+		if !isValidFlashFrames(m.Frames) {
+			return fmt.Errorf("flash frames %d out of range", m.Frames)
+		}
 	}
 
 	return nil

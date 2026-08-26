@@ -7,6 +7,7 @@ package protocol
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -37,17 +38,18 @@ func DeserializeOne(msgBytes []byte) (msg any, err error) {
 	typ, ok := packetsC2S[packetName]
 	if !ok {
 		// We did not find a [reflect.Type] for that name
-		err = errors.New("not a valid packet name")
+		err = fmt.Errorf("not a valid packet name: `%s`", packetName)
 		return
 	}
 
 	// Check if the number of params we have
 	// is the same # of fields as the Go type we found
 	numField := typ.NumField()
-	if partsLen < numField+1 {
+	namelessPartsLen := partsLen - 1
+	if namelessPartsLen != numField {
 		// No, we do not have the right number of fields
 		// so we know the packet is malformed
-		err = errors.New("there are not enough fields")
+		err = fmt.Errorf("%s: missing fields (%d/%d)", packetName, namelessPartsLen, numField)
 		return
 	}
 
@@ -60,6 +62,7 @@ func DeserializeOne(msgBytes []byte) (msg any, err error) {
 	for i := range numField {
 		// Get field from struct (so we can set it) as a [reflect.Value],
 		// and as a normal [any] (so we can `switch` by its type)
+		fieldName := typ.Field(i).Name
 		fieldValue := msgValueI.Field(i)
 		field := fieldValue.Interface()
 
@@ -74,7 +77,7 @@ func DeserializeOne(msgBytes []byte) (msg any, err error) {
 			var partInt int64
 			partInt, err = strconv.ParseInt(part, 10, fieldValue.Type().Bits())
 			if err != nil {
-				err = errors.New("invalid integer")
+				err = fmt.Errorf("%s/%s: invalid integer", packetName, fieldName)
 				return
 			}
 			fieldValue.SetInt(partInt)
@@ -89,7 +92,7 @@ func DeserializeOne(msgBytes []byte) (msg any, err error) {
 			case "1":
 				partBool = true
 			default:
-				err = errors.New("invalid boolean")
+				err = fmt.Errorf("%s/%s: invalid boolean", packetName, fieldName)
 				return
 			}
 			fieldValue.SetBool(partBool)
@@ -114,9 +117,9 @@ func Deserialize(msgsBytes []byte) (msgs []any, err error) {
 	msgStrSeq := strings.SplitSeq(string(msgsBytes), string(messageDelim))
 	for msgStr := range msgStrSeq {
 		// Parse single message
-		msg, err1 := DeserializeOne([]byte(msgStr))
-		if err1 != nil {
-			err = err1
+		msg, err_ := DeserializeOne([]byte(msgStr))
+		if err_ != nil {
+			err = err_
 			return
 		}
 

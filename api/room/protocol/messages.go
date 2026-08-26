@@ -43,6 +43,11 @@ type MainPlayerPosS2C struct {
 	X, Y int32
 }
 
+type JumpS2C struct {
+	ID   int32
+	X, Y int32
+}
+
 type SpriteS2C struct {
 	ID    int32
 	Name  string
@@ -82,6 +87,12 @@ type SoundEffectS2C struct {
 	Balance int32
 }
 
+type FlashS2C struct {
+	ID            int32
+	R, G, B       int32
+	Power, Frames int32
+}
+
 // ********** Client -> Server **********
 // These are packets sent by the client
 // and handled by the server.
@@ -91,6 +102,14 @@ type SwitchRoomC2S struct {
 }
 
 type MainPlayerPosC2S struct {
+	X, Y int32
+}
+
+type TeleportC2S struct {
+	X, Y int32
+}
+
+type JumpC2S struct {
 	X, Y int32
 }
 
@@ -126,6 +145,11 @@ type SoundEffectC2S struct {
 	Balance int32
 }
 
+type FlashC2S struct {
+	R, G, B       int32
+	Power, Frames int32
+}
+
 // ********** Message Registry **********
 
 var (
@@ -149,6 +173,7 @@ func init() {
 	registerS2C[DisconnectS2C]("d")
 	registerS2C[NameS2C]("name")
 	registerS2C[MainPlayerPosS2C]("m")
+	registerS2C[JumpS2C]("jmp")
 	registerS2C[SpriteS2C]("spr")
 	registerS2C[FacingS2C]("f")
 	registerS2C[SpeedS2C]("spd")
@@ -156,9 +181,12 @@ func init() {
 	registerS2C[TransparencyS2C]("tr")
 	registerS2C[SysNameS2C]("sys")
 	registerS2C[SoundEffectS2C]("se")
+	registerS2C[FlashS2C]("fl")
 
 	registerC2S[SwitchRoomC2S]("sr")
 	registerC2S[MainPlayerPosC2S]("m")
+	registerC2S[TeleportC2S]("tp")
+	registerC2S[JumpC2S]("jmp")
 	registerC2S[SpeedC2S]("spd")
 	registerC2S[SpriteC2S]("spr")
 	registerC2S[FacingC2S]("f")
@@ -166,4 +194,5 @@ func init() {
 	registerC2S[SysNameC2S]("sys")
 	registerC2S[TransparencyC2S]("tr")
 	registerC2S[SoundEffectC2S]("se")
+	registerC2S[FlashC2S]("fl")
 }
