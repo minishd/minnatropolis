@@ -49,7 +49,7 @@ func DeserializeOne(msgBytes []byte) (msg any, err error) {
 	if namelessPartsLen != numField {
 		// No, we do not have the right number of fields
 		// so we know the packet is malformed
-		err = fmt.Errorf("%s: missing fields (%d/%d)", packetName, namelessPartsLen, numField)
+		err = fmt.Errorf("%s: wrong # of fields (%d instead of %d)", packetName, namelessPartsLen, numField)
 		return
 	}
 
@@ -158,8 +158,18 @@ func SerializeOne(msg any) (msgBytes []byte) {
 			msgBytes = append(msgBytes, field...)
 		case string:
 			msgBytes = append(msgBytes, []byte(field)...)
+		case []string:
+			numStr := len(field)
+			for i, str := range field {
+				msgBytes = append(msgBytes, []byte(str)...)
+				// If there is another string, we need
+				// a param. delimiter to separate it
+				if i+1 != numStr {
+					msgBytes = append(msgBytes, paramDelim...)
+				}
+			}
 
-		case int32, int64:
+		case int32, int64, PictureListType:
 			msgBytes = append(msgBytes, []byte(strconv.FormatInt(fieldValue.Int(), 10))...)
 		case uint32, uint64:
 			msgBytes = append(msgBytes, []byte(strconv.FormatUint(fieldValue.Uint(), 10))...)

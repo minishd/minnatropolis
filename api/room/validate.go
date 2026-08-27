@@ -8,6 +8,8 @@ import (
 
 // Ranges come from ynoproject/ynoserver
 const (
+	minSpriteIndex = 0
+
 	minXY = 0
 	maxXY = 500
 
@@ -34,11 +36,21 @@ const (
 
 	minFlashPower  = 0
 	minFlashFrames = 0
+
+	minPicID = 0
+	maxPicID = 1000
+
+	minPicMagnify    = 0
+	minPicRGBS       = 0
+	maxPicRGBS       = 200
+	minPicEffectMode = 0
+
+	minPicDuration = 0
 )
 
 // No upper positions as the server doesn't know them.
 func isValidSpriteIndex(index int32) bool {
-	return index >= 0
+	return index >= minSpriteIndex
 }
 
 func isValidXY(p int32) bool {
@@ -76,8 +88,49 @@ func isValidRGB(x int32) bool {
 func isValidFlashPower(power int32) bool {
 	return power >= minFlashPower
 }
+
 func isValidFlashFrames(frames int32) bool {
 	return frames >= minFlashFrames
+}
+
+func isValidPicID(id int32) bool {
+	return id >= minPicID && id <= maxPicID
+}
+
+func isValidPicMagnify(magnify int32) bool {
+	return magnify >= minPicMagnify
+}
+
+func isValidPicRGBS(c int32) bool {
+	return c >= minPicRGBS && c <= maxPicRGBS
+}
+
+func isValidPicEffectMode(effectMode int32) bool {
+	return effectMode >= minPicEffectMode
+}
+
+func isValidPicDuration(duration int32) bool {
+	return duration >= minPicDuration
+}
+
+func validateBasePicture(bp pt.BasePicture) error {
+	if !isValidPicID(bp.PicID) {
+		return fmt.Errorf("pic id %d out of range", bp.PicID)
+	}
+	if !isValidPicMagnify(bp.Magnify) {
+		return fmt.Errorf("pic magnify %d out of range", bp.Magnify)
+	}
+	if !isValidPicRGBS(bp.R) ||
+		!isValidPicRGBS(bp.G) ||
+		!isValidPicRGBS(bp.B) ||
+		!isValidPicRGBS(bp.Saturation) {
+		return fmt.Errorf("pic rgbs %d,%d,%d,%d out of range", bp.R, bp.G, bp.B, bp.Saturation)
+	}
+	if !isValidPicEffectMode(bp.EffectMode) {
+		return fmt.Errorf("pic effect mode %d out of range", bp.EffectMode)
+	}
+
+	return nil
 }
 
 // Validates requests and returns an error if
@@ -115,7 +168,15 @@ func (h *Handler) validateMessage(m any) error {
 
 	case pt.MainPlayerPosC2S:
 		if !isValidXY(m.X) || !isValidXY(m.Y) {
-			return fmt.Errorf("positions %d, %d out of range", m.X, m.Y)
+			return fmt.Errorf("move position %d,%d out of range", m.X, m.Y)
+		}
+	case pt.TeleportC2S:
+		if !isValidXY(m.X) || !isValidXY(m.Y) {
+			return fmt.Errorf("teleport position %d,%d out of range", m.X, m.Y)
+		}
+	case pt.JumpC2S:
+		if !isValidXY(m.X) || !isValidXY(m.Y) {
+			return fmt.Errorf("jump position %d,%d out of range", m.X, m.Y)
 		}
 
 	case pt.TransparencyC2S:
@@ -144,6 +205,42 @@ func (h *Handler) validateMessage(m any) error {
 		if !isValidFlashFrames(m.Frames) {
 			return fmt.Errorf("flash frames %d out of range", m.Frames)
 		}
+
+	case pt.ShowPlayerBattleAnimC2S:
+		if !h.filters.HasBattleAnimID(m.AnimID) {
+			return fmt.Errorf("unknown battle anim ID %d", m.AnimID)
+		}
+
+	case pt.ShowPictureC2S:
+		if err := validateBasePicture(m.BasePicture); err != nil {
+			return err
+		}
+		if !h.filters.HasPicture(m.PicName) {
+			return fmt.Errorf("unknown picture %s", m.PicName)
+		}
+
+	case pt.MovePictureC2S:
+		if err := validateBasePicture(m.BasePicture); err != nil {
+			return err
+		}
+		if !isValidPicDuration(m.Duration) {
+			return fmt.Errorf("pic duration %d out of range", m.Duration)
+		}
+
+	case pt.ErasePictureC2S:
+		if !isValidPicID(m.PicID) {
+			return fmt.Errorf("erase pic id %d out of range", m.PicID)
+		}
+
+	// Unvalidated
+	case pt.HiddenC2S:
+
+	default:
+		// We should at least add a no-op case
+		// for packets we don't need to validate..
+		// (So no packets are forgotten)
+		panic("packet has no validation")
+
 	}
 
 	return nil

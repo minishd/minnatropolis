@@ -11,7 +11,6 @@ type clientData struct {
 	cID  int32
 	name string
 
-	// mocks for fields we don't implement yet
 	accountUUID string
 	rank        int32
 	loggedIn    bool
@@ -30,6 +29,11 @@ type clientData struct {
 	sprite       string
 	spriteIndex  int32
 	sysName      string
+
+	// We need to store what pictures somebody has shown,
+	// so that if another player joins, we can sync them
+	// those pictures
+	activePictures map[int32]pt.Picture
 }
 
 // Wrapper around a [gws.Conn].

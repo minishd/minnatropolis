@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,13 +17,22 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 	"github.com/minishd/minnatropolis/api"
-	"github.com/minishd/minnatropolis/api/room"
+	"github.com/minishd/minnatropolis/api/room/filters"
 	"github.com/minishd/minnatropolis/datastore"
 	"github.com/pressly/goose/v3"
 )
 
 //go:embed sql/migrations/*.sql
 var embedMigrations embed.FS
+
+func getFilterList(key string) (list []string) {
+	listStr := os.Getenv(key)
+	if listStr == "" {
+		return
+	}
+	list = strings.Split(listStr, "|")
+	return
+}
 
 func run(rootCtx context.Context) error {
 	// Make context for graceful shutdown
@@ -36,7 +47,20 @@ func run(rootCtx context.Context) error {
 		return err
 	}
 
-	filters, err := room.LoadFilters(os.Getenv("FILTER_INDEX_PATH"))
+	pictureNames := getFilterList("FILTER_PICTURE_NAMES")
+	picturePrefixes := getFilterList("FILTER_PICTURE_PREFIXES")
+	battleAnimIDsStr := getFilterList("FILTER_BATTLE_ANIM_IDS")
+	var battleAnimIDs []int32
+	for _, idStr := range battleAnimIDsStr {
+		id_, err := strconv.Atoi(idStr)
+		if err != nil {
+			return err
+		}
+		battleAnimIDs = append(battleAnimIDs, int32(id_))
+	}
+
+	indexPath := os.Getenv("FILTER_INDEX_PATH")
+	filters, err := filters.Load(indexPath, battleAnimIDs, pictureNames, picturePrefixes)
 	if err != nil {
 		return err
 	}

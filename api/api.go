@@ -6,6 +6,7 @@ import (
 
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room"
+	"github.com/minishd/minnatropolis/api/room/filters"
 	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
 	"golang.org/x/time/rate"
@@ -21,7 +22,7 @@ const (
 	roomRateLimitBurst     = 30
 )
 
-func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, filters *room.Filters) {
+func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, filters *filters.Filters) {
 	// Set up upgrader
 	rh := room.NewHandler(ds, guardPSK, filters)
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{

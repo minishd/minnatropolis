@@ -4,6 +4,44 @@ import (
 	"reflect"
 )
 
+// ********** General Types **********
+// These types may be shared between
+// S->C, C->S, and general backend
+// code
+
+type BasePicture struct {
+	PicID                   int32
+	PosX, PosY              int32
+	MapX, MapY              int32
+	PanX, PanY              int32
+	Magnify                 int32
+	TopTransp, BottomTransp int32
+	R, G, B, Saturation     int32
+	EffectMode              int32
+	EffectPower             int32
+}
+type Picture struct {
+	BasePicture
+
+	PicName        string
+	UseTranspColor bool
+	FixedToMap     bool
+
+	SpritesheetCols, SpritesheetRows int32
+	SpritesheetFrame                 int32
+	SpritesheetSpeed                 int32
+	SpritesheetPlayOnce              bool
+
+	MapLayer    int32
+	BattleLayer int32
+	Flags       int32
+	BlendMode   int32
+
+	FlipX, FlipY bool
+
+	Origin int
+}
+
 // ********** Server -> Client **********
 // These packets are sent by the server
 // to clients (minnaengine).
@@ -93,6 +131,44 @@ type FlashS2C struct {
 	Power, Frames int32
 }
 
+type ShowPlayerBattleAnimS2C struct {
+	ID     int32
+	AnimID int32
+}
+
+type BattleAnimSyncListS2C struct {
+	IDs []int32
+}
+
+type PictureListType int32
+
+const (
+	PictureListName PictureListType = iota
+	PictureListPrefix
+)
+
+type PictureSyncListS2C struct {
+	Type PictureListType
+	List []string
+}
+
+type ShowPictureS2C struct {
+	ID int32
+	Picture
+}
+
+type MovePictureS2C struct {
+	ID int32
+	BasePicture
+
+	Duration int32
+}
+
+type ErasePictureS2C struct {
+	ID    int32
+	PicID int32
+}
+
 // ********** Client -> Server **********
 // These are packets sent by the client
 // and handled by the server.
@@ -150,6 +226,24 @@ type FlashC2S struct {
 	Power, Frames int32
 }
 
+type ShowPlayerBattleAnimC2S struct {
+	AnimID int32
+}
+
+type ShowPictureC2S struct {
+	Picture
+}
+
+type MovePictureC2S struct {
+	BasePicture
+
+	Duration int32
+}
+
+type ErasePictureC2S struct {
+	PicID int32
+}
+
 // ********** Message Registry **********
 
 var (
@@ -182,6 +276,12 @@ func init() {
 	registerS2C[SysNameS2C]("sys")
 	registerS2C[SoundEffectS2C]("se")
 	registerS2C[FlashS2C]("fl")
+	registerS2C[ShowPlayerBattleAnimS2C]("ba")
+	registerS2C[BattleAnimSyncListS2C]("bas")
+	registerS2C[PictureSyncListS2C]("pns")
+	registerS2C[ShowPictureS2C]("ap")
+	registerS2C[MovePictureS2C]("mp")
+	registerS2C[ErasePictureS2C]("rp")
 
 	registerC2S[SwitchRoomC2S]("sr")
 	registerC2S[MainPlayerPosC2S]("m")
@@ -195,4 +295,8 @@ func init() {
 	registerC2S[TransparencyC2S]("tr")
 	registerC2S[SoundEffectC2S]("se")
 	registerC2S[FlashC2S]("fl")
+	registerC2S[ShowPlayerBattleAnimC2S]("ba")
+	registerC2S[ShowPictureC2S]("ap")
+	registerC2S[MovePictureC2S]("mp")
+	registerC2S[ErasePictureC2S]("rp")
 }

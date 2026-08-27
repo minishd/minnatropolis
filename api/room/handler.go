@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room/emitter"
+	"github.com/minishd/minnatropolis/api/room/filters"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
 	"github.com/minishd/minnatropolis/datastore"
 )
@@ -22,11 +23,11 @@ type Handler struct {
 	guardPSK []byte
 
 	ds      *datastore.DataStore
-	filters *Filters
+	filters *filters.Filters
 	em      *emitter.Emitter[int32, *User]
 }
 
-func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *Filters) *Handler {
+func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filters) *Handler {
 	return &Handler{
 		guardPSK: guardPSK,
 
@@ -146,6 +147,8 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		sprite:       defaultSprite,
 		spriteIndex:  defaultSpriteIndex,
 		sysName:      defaultSysName,
+
+		activePictures: make(map[int32]pt.Picture),
 	})
 
 	// Authorize connection
@@ -199,19 +202,65 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	s := NewUser(c)
 	log.Println("open cID=", s.GetSubscriberID())
 
-	// Send initial packet
+	// Set up initial packets
+	// ..
 	d := s.getData()
-	s.Send(pt.SyncPlayerDataS2C{
-		HostID:     d.cID,
-		Key:        d.guardKey,
-		UUID:       d.accountUUID,
-		Rank:       d.rank,
-		IsLoggedIn: d.loggedIn,
-		Badge:      d.badge,
-	})
+	initial := []any{
+		pt.SyncPlayerDataS2C{
+			HostID:     d.cID,
+			Key:        d.guardKey,
+			UUID:       d.accountUUID,
+			Rank:       d.rank,
+			IsLoggedIn: d.loggedIn,
+			Badge:      d.badge,
+		},
+	}
+
+	// We only want to send filter list packets
+	// if there's anything at all we want the client
+	// to sync
+	// That is because if you send an empty pic. prefix
+	// sync list, the client will begin to sync every picture
+	// I am assuming that is an engine bug..
+	picNames := h.filters.GetPictureNames()
+	picPrefixes := h.filters.GetPicturePrefixes()
+	battleAnimIDs := h.filters.GetBattleAnimIDs()
+	if len(picNames) != 0 {
+		initial = append(initial, pt.PictureSyncListS2C{
+			Type: pt.PictureListName,
+			List: picNames,
+		})
+	}
+	if len(picPrefixes) != 0 {
+		initial = append(initial, pt.PictureSyncListS2C{
+			Type: pt.PictureListPrefix,
+			List: picPrefixes,
+		})
+	}
+	if len(battleAnimIDs) != 0 {
+		initial = append(initial, pt.BattleAnimSyncListS2C{
+			IDs: battleAnimIDs,
+		})
+	}
+
+	// Send initial packet..
+	s.Send(initial...)
 
 	// Add to room
 	h.changeRoom(s, d.roomID)
+}
+
+func (h *Handler) removePicture(d *clientData, picID int32) {
+	delete(d.activePictures, picID)
+	h.shareToRoom(d, pt.ErasePictureS2C{ID: d.cID, PicID: picID})
+}
+
+func (h *Handler) updatePicture(d *clientData, pic pt.Picture) {
+	// If it's not a one-shot effect,
+	// we will keep track of it
+	if !pic.SpritesheetPlayOnce {
+		d.activePictures[pic.PicID] = pic
+	}
 }
 
 func (h *Handler) processMessage(u *User, m any) {
@@ -227,12 +276,10 @@ func (h *Handler) processMessage(u *User, m any) {
 		d.x = m.X
 		d.y = m.Y
 		h.shareToRoom(d, pt.MainPlayerPosS2C{ID: d.cID, X: d.x, Y: d.y})
-
 	case pt.TeleportC2S:
 		d.x = m.X
 		d.y = m.Y
 		h.shareToRoom(d, pt.MainPlayerPosS2C{ID: d.cID, X: d.x, Y: d.y})
-
 	case pt.JumpC2S:
 		d.x = m.X
 		d.y = m.Y
@@ -268,6 +315,40 @@ func (h *Handler) processMessage(u *User, m any) {
 
 	case pt.FlashC2S:
 		h.shareToRoom(d, pt.FlashS2C{ID: d.cID, R: m.R, G: m.G, B: m.B, Power: m.Power, Frames: m.Frames})
+
+	case pt.ShowPlayerBattleAnimC2S:
+		h.shareToRoom(d, pt.ShowPlayerBattleAnimS2C{ID: d.cID, AnimID: m.AnimID})
+
+	case pt.ShowPictureC2S:
+		// If there is already a picture
+		// with that ID, we will remove it
+		_, ok := d.activePictures[m.PicID]
+		if ok {
+			h.removePicture(d, m.PicID)
+		}
+
+		h.updatePicture(d, m.Picture)
+		h.shareToRoom(d, pt.ShowPictureS2C{ID: d.cID, Picture: m.Picture})
+	case pt.MovePictureC2S:
+		pic, ok := d.activePictures[m.PicID]
+		if !ok {
+			// No such picture?
+			// That's invalid but I won't do
+			// anything about it for now
+			return
+		}
+		pic.BasePicture = m.BasePicture
+
+		h.updatePicture(d, pic)
+		h.shareToRoom(d, pt.MovePictureS2C{ID: d.cID, BasePicture: m.BasePicture, Duration: m.Duration})
+
+	case pt.ErasePictureC2S:
+		_, ok := d.activePictures[m.PicID]
+		if !ok {
+			// Also no such picture..
+			return
+		}
+		h.removePicture(d, m.PicID)
 
 	default:
 		// If we registered a message type,
