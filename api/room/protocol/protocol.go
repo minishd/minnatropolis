@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -18,38 +19,18 @@ var (
 	messageDelim = []byte{0xef, 0xbf, 0xbe}
 )
 
-// Convert a C2S message from YNO's format
-// to its corresponding Go struct
-func DeserializeOne(msgBytes []byte) (msg any, err error) {
-	// Split packet by param/part delimiter
-	msgStr := string(msgBytes)
-	parts := strings.Split(msgStr, string(paramDelim))
-	partsLen := len(parts)
-	if partsLen < 1 {
-		// There no params, so we can't read the
-		// first param to get the packet name
-		err = errors.New("name of packet unspecified")
-		return
-	}
-
-	// Read the name of the packet
-	// and look up corresponding [reflect.Type]
-	packetName := parts[0]
-	typ, ok := packetsC2S[packetName]
-	if !ok {
-		// We did not find a [reflect.Type] for that name
-		err = fmt.Errorf("not a valid packet name: `%s`", packetName)
-		return
-	}
-
-	// Check if the number of params we have
-	// is the same # of fields as the Go type we found
+// Deserialize the fields of a struct from the given list of parts
+func deserializeFields(packetName string, typ reflect.Type, parts []string) (msg any, numPartsUsed int, err error) {
+	// Before we do anything, do we have enough parts
+	// to read all of the fields we want?
+	// (It's okay to have more, maybe we will need to parse
+	// a field that's a struct; NumField doesn't count fields
+	// of child structures)
 	numField := typ.NumField()
-	namelessPartsLen := partsLen - 1
-	if namelessPartsLen != numField {
-		// No, we do not have the right number of fields
-		// so we know the packet is malformed
-		err = fmt.Errorf("%s: wrong # of fields (%d instead of %d)", packetName, namelessPartsLen, numField)
+	partsLen := len(parts)
+	if partsLen < numField {
+		// No, there are not enough
+		err = fmt.Errorf("%s: needed %d fields, there were only %d", packetName, numField, partsLen)
 		return
 	}
 
@@ -66,7 +47,33 @@ func DeserializeOne(msgBytes []byte) (msg any, err error) {
 		fieldValue := msgValueI.Field(i)
 		field := fieldValue.Interface()
 
-		part := parts[i+1]
+		// If this field is another struct,
+		// there will be no corresponding part
+		// Hand off the rest of the parts
+		// to be parsed as the struct's type
+		switch field.(type) {
+		case BasePicture, Picture:
+			nextMsg, nextNPU, err_ := deserializeFields(packetName, fieldValue.Type(), parts[i:])
+			if err_ != nil {
+				err = err_
+				return
+			}
+			fieldValue.Set(reflect.ValueOf(nextMsg))
+
+			// We want to keep track of how many parts we have read
+			// That way we can get rid of parts that don't
+			// belong to the current struct
+			parts = slices.Delete(parts, i+1, i+nextNPU)
+			// ^ We also leave one of the fields that aren't ours
+			// so that the next iteration reads the correct field
+			// (Even though we didn't read any parts ourselves,
+			// `i` still got incremented)
+			numPartsUsed += nextNPU
+			continue
+		}
+
+		part := parts[i]
+		numPartsUsed++
 
 		switch field.(type) {
 		// [string]s don't need any change
@@ -99,13 +106,55 @@ func DeserializeOne(msgBytes []byte) (msg any, err error) {
 
 		case int, uint, uintptr:
 			// Only allow ints of specified bitness
-			panic("message uses int of unspecified size")
+			panic("inbound message uses int of unspecified size")
 		default:
-			panic("message contains unhandled type")
+			panic("inbound message contains unhandled type")
 		}
 	}
 
 	msg = msgValueI.Interface()
+
+	return
+}
+
+// Convert a C2S message from YNO's format
+// to its corresponding Go struct
+func deserializeOne(msgBytes []byte) (msg any, err error) {
+	// Split packet by param/part delimiter
+	msgStr := string(msgBytes)
+	parts := strings.Split(msgStr, string(paramDelim))
+	partsLen := len(parts)
+	if partsLen < 1 {
+		// There no params, so we can't read the
+		// first param to get the packet name
+		err = errors.New("name of packet unspecified")
+		return
+	}
+
+	// Read the name of the packet
+	// and look up corresponding [reflect.Type]
+	packetName := parts[0]
+	typ, ok := packetsC2S[packetName]
+	if !ok {
+		// We did not find a [reflect.Type] for that name
+		err = fmt.Errorf("not a valid packet name: `%s`", packetName)
+		return
+	}
+
+	// Deserialize parts to struct fields
+	namelessParts := parts[1:]
+	msg, npu, err := deserializeFields(packetName, typ, namelessParts)
+	if err != nil {
+		return
+	}
+
+	// Make sure the client didn't send any extra fields
+	// That would be weird right?
+	namelessPartsLen := len(namelessParts)
+	if namelessPartsLen != npu {
+		err = fmt.Errorf("%s: too many fields (%d instead of %d)", packetName, namelessPartsLen, npu)
+		return
+	}
 
 	return
 }
@@ -117,7 +166,7 @@ func Deserialize(msgsBytes []byte) (msgs []any, err error) {
 	msgStrSeq := strings.SplitSeq(string(msgsBytes), string(messageDelim))
 	for msgStr := range msgStrSeq {
 		// Parse single message
-		msg, err_ := DeserializeOne([]byte(msgStr))
+		msg, err_ := deserializeOne([]byte(msgStr))
 		if err_ != nil {
 			err = err_
 			return
@@ -129,20 +178,9 @@ func Deserialize(msgsBytes []byte) (msgs []any, err error) {
 	return
 }
 
-// Convert an S2C message from a Go struct
-// to network format
-func SerializeOne(msg any) (msgBytes []byte) {
+// Serialize the fields of a struct into an array of bytes
+func serializeFields(msg any) (msgBytes []byte) {
 	msgValue := reflect.ValueOf(msg)
-
-	// Look up the name of the packet by [reflect.Type]
-	packetName, ok := packetsS2C[msgValue.Type()]
-	if !ok {
-		panic("can't serialize unregistered packet")
-	}
-
-	// Push name of packet to message + param delimiter
-	msgBytes = append(msgBytes, []byte(packetName)...)
-	msgBytes = append(msgBytes, paramDelim...)
 
 	// Start converting fields to string representation
 	// and pushing them to the message
@@ -193,12 +231,15 @@ func SerializeOne(msg any) (msgBytes []byte) {
 			}
 			msgBytes = append(msgBytes, byte(digit))
 
+		case Picture, BasePicture:
+			msgBytes = append(msgBytes, serializeFields(field)...)
+
 		case int, uint, uintptr:
 			// We want sizes to be specified
 			// (More workable for the future)
-			panic("message uses int of unspecified size")
+			panic("outbound message uses int of unspecified size")
 		default:
-			panic("message contains unhandled type")
+			panic("outbound message contains unhandled type")
 		}
 
 		// If not last field, add param delimiter
@@ -210,12 +251,33 @@ func SerializeOne(msg any) (msgBytes []byte) {
 	return
 }
 
+// Convert an S2C message from a Go struct
+// to network format
+func serializeOne(msg any) (msgBytes []byte) {
+	msgValue := reflect.ValueOf(msg)
+
+	// Look up the name of the packet by [reflect.Type]
+	packetName, ok := packetsS2C[msgValue.Type()]
+	if !ok {
+		panic("can't serialize unregistered packet")
+	}
+
+	// Push name of packet to message + param delimiter
+	msgBytes = append(msgBytes, []byte(packetName)...)
+	msgBytes = append(msgBytes, paramDelim...)
+
+	// Push serialized struct fields
+	msgBytes = append(msgBytes, serializeFields(msg)...)
+
+	return
+}
+
 // Convert one or more messages into YNO's format
 func Serialize(msgs ...any) (msgsBytes []byte) {
 	msgsLen := len(msgs)
 	for i, msg := range msgs {
 		// Serialize and push single message
-		msgBytes := SerializeOne(msg)
+		msgBytes := serializeOne(msg)
 		msgsBytes = append(msgsBytes, msgBytes...)
 
 		// If it's not the last message,

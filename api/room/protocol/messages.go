@@ -39,7 +39,7 @@ type Picture struct {
 
 	FlipX, FlipY bool
 
-	Origin int
+	Origin int32
 }
 
 // ********** Server -> Client **********

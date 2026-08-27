@@ -30,7 +30,7 @@ func getFilterList(key string) (list []string) {
 	if listStr == "" {
 		return
 	}
-	list = strings.Split(listStr, "|")
+	list = strings.Split(listStr, ":")
 	return
 }
 
