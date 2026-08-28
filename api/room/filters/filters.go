@@ -3,7 +3,9 @@ package filters
 import (
 	"encoding/json"
 	"fmt"
+	"iter"
 	"log"
+	"maps"
 	"os"
 	"slices"
 	"strconv"
@@ -32,7 +34,6 @@ func has[T comparable](set map[T]struct{}, name T) (ok bool) {
 
 func (f *Filters) HasSprite(name string) bool { return has(f.sprites, name) }
 func (f *Filters) HasSystem(name string) bool { return has(f.systems, name) }
-func (f *Filters) HasMap(id int32) bool       { return has(f.maps, id) }
 
 func (f *Filters) HasPicture(name string) bool {
 	// Check if it's specified directly in names list first
@@ -54,7 +55,7 @@ func (f *Filters) HasPicture(name string) bool {
 }
 func (f *Filters) HasBattleAnimID(id int32) bool { return slices.Contains(f.battleAnimIDs, id) }
 
-// Getters for things we need to send to the client
+func (f *Filters) GetMaps() iter.Seq[int32]     { return maps.Keys(f.maps) }
 func (f *Filters) GetPictureNames() []string    { return f.pictureNames }
 func (f *Filters) GetPicturePrefixes() []string { return f.picturePrefixes }
 func (f *Filters) GetBattleAnimIDs() []int32    { return f.battleAnimIDs }
