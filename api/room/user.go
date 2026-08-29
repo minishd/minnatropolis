@@ -95,6 +95,9 @@ func (u *User) GetIntroMessages() (msgs []any) {
 	if d.sysName != defaultSysName {
 		msgs = append(msgs, pt.SysNameS2C{ID: d.cID, Name: d.sysName})
 	}
+	for _, pic := range d.activePictures {
+		msgs = append(msgs, pt.ShowPictureS2C{ID: d.cID, Picture: pic})
+	}
 
 	return
 }
