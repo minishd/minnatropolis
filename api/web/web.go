@@ -123,12 +123,12 @@ func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Call req. handler
 	if err := handler(w, r); err != nil {
 		// An error was returned
-		// See if it's a [WebError],
+		// See if it's an [Error],
 		// werr wrote down status codes and error messages
 		// for those that werr want to return
 		werr, ok := errors.AsType[*Error](err)
 		if !ok {
-			// We could not cast it to a [WebError]
+			// We could not cast it to an [Error]
 			// Log it, and fall back to generic "server error" message
 			log.Println("handler raised error:", err)
 			werr = ErrServerInternal

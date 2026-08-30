@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/binary"
-	"fmt"
 	"log"
 	"math/rand/v2"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room/emitter"
+	"github.com/minishd/minnatropolis/api/room/filters"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
 	"github.com/minishd/minnatropolis/datastore"
 )
@@ -22,16 +22,18 @@ import (
 type Handler struct {
 	guardPSK []byte
 
-	ds *datastore.DataStore
-	em *emitter.Emitter[int32, *User]
+	ds      *datastore.DataStore
+	filters *filters.Filters
+	em      *emitter.Emitter[int32, *User]
 }
 
-func NewHandler(ds *datastore.DataStore, guardPSK []byte) *Handler {
+func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filters) *Handler {
 	return &Handler{
 		guardPSK: guardPSK,
 
-		ds: ds,
-		em: emitter.New[int32, *User](),
+		ds:      ds,
+		filters: filters,
+		em:      emitter.New[int32, *User](),
 	}
 }
 
@@ -93,11 +95,13 @@ const (
 
 func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	// Get room ID
-	roomID, err := strconv.Atoi(r.URL.Query().Get("id"))
+	roomID_, err := strconv.Atoi(r.URL.Query().Get("id"))
 	if err != nil {
 		return false
 	}
-	if roomID < 1 || roomID > 5000 {
+	roomID := int32(roomID_)
+	if !h.filters.HasMap(roomID) {
+		// where are you going?
 		return false
 	}
 
@@ -133,7 +137,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		guardKey:      guardKey,
 		guardKeyBytes: guardKeyBytes,
 
-		roomID: int32(roomID),
+		roomID: roomID,
 		x:      defaultXY, y: defaultXY,
 		facing: defaultFacing,
 		speed:  defaultSpeed,
@@ -143,6 +147,8 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		sprite:       defaultSprite,
 		spriteIndex:  defaultSpriteIndex,
 		sysName:      defaultSysName,
+
+		activePictures: make(map[int32]pt.Picture),
 	})
 
 	// Authorize connection
@@ -196,22 +202,68 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	s := NewUser(c)
 	log.Println("open cID=", s.GetSubscriberID())
 
-	// Send initial packet
+	// Set up initial packets
+	// ..
 	d := s.getData()
-	s.Send(pt.SyncPlayerDataS2C{
-		HostID:     d.cID,
-		Key:        d.guardKey,
-		UUID:       d.accountUUID,
-		Rank:       d.rank,
-		IsLoggedIn: d.loggedIn,
-		Badge:      d.badge,
-	})
+	initial := []any{
+		pt.SyncPlayerDataS2C{
+			HostID:     d.cID,
+			Key:        d.guardKey,
+			UUID:       d.accountUUID,
+			Rank:       d.rank,
+			IsLoggedIn: d.loggedIn,
+			Badge:      d.badge,
+		},
+	}
+
+	// We only want to send filter list packets
+	// if there's anything at all we want the client
+	// to sync
+	// That is because if you send an empty pic. prefix
+	// sync list, the client will begin to sync every picture
+	// I am assuming that is an engine bug..
+	picNames := h.filters.GetPictureNames()
+	picPrefixes := h.filters.GetPicturePrefixes()
+	battleAnimIDs := h.filters.GetBattleAnimIDs()
+	if len(picNames) != 0 {
+		initial = append(initial, pt.PictureSyncListS2C{
+			Type: pt.PictureListName,
+			List: picNames,
+		})
+	}
+	if len(picPrefixes) != 0 {
+		initial = append(initial, pt.PictureSyncListS2C{
+			Type: pt.PictureListPrefix,
+			List: picPrefixes,
+		})
+	}
+	if len(battleAnimIDs) != 0 {
+		initial = append(initial, pt.BattleAnimSyncListS2C{
+			IDs: battleAnimIDs,
+		})
+	}
+
+	// Send initial packet..
+	s.Send(initial...)
 
 	// Add to room
 	h.changeRoom(s, d.roomID)
 }
 
-func (h *Handler) processMessage(u *User, m any) (err error) {
+func (h *Handler) removePicture(d *clientData, picID int32) {
+	delete(d.activePictures, picID)
+	h.shareToRoom(d, pt.ErasePictureS2C{ID: d.cID, PicID: picID})
+}
+
+func (h *Handler) updatePicture(d *clientData, pic pt.Picture) {
+	// If it's not a one-shot effect,
+	// we will keep track of it
+	if !pic.SpritesheetPlayOnce {
+		d.activePictures[pic.PicID] = pic
+	}
+}
+
+func (h *Handler) processMessage(u *User, m any) {
 	d := u.getData()
 
 	switch m := m.(type) {
@@ -224,6 +276,14 @@ func (h *Handler) processMessage(u *User, m any) (err error) {
 		d.x = m.X
 		d.y = m.Y
 		h.shareToRoom(d, pt.MainPlayerPosS2C{ID: d.cID, X: d.x, Y: d.y})
+	case pt.TeleportC2S:
+		d.x = m.X
+		d.y = m.Y
+		h.shareToRoom(d, pt.MainPlayerPosS2C{ID: d.cID, X: d.x, Y: d.y})
+	case pt.JumpC2S:
+		d.x = m.X
+		d.y = m.Y
+		h.shareToRoom(d, pt.JumpS2C{ID: d.cID, X: d.x, Y: d.y})
 
 	case pt.SpeedC2S:
 		d.speed = m.Speed
@@ -235,10 +295,7 @@ func (h *Handler) processMessage(u *User, m any) (err error) {
 		h.shareToRoom(d, pt.SpriteS2C{ID: d.cID, Name: d.sprite, Index: d.spriteIndex})
 
 	case pt.FacingC2S:
-		err = d.setFacing(m.Direction)
-		if err != nil {
-			return
-		}
+		d.facing = m.Direction
 		h.shareToRoom(d, pt.FacingS2C{ID: d.cID, Direction: d.facing})
 
 	case pt.HiddenC2S:
@@ -256,11 +313,48 @@ func (h *Handler) processMessage(u *User, m any) (err error) {
 	case pt.SoundEffectC2S:
 		h.shareToRoom(d, pt.SoundEffectS2C{ID: d.cID, Name: m.Name, Volume: m.Volume, Tempo: m.Tempo, Balance: m.Balance})
 
-	default:
-		err = fmt.Errorf("unhandled msg %+v", m)
-	}
+	case pt.FlashC2S:
+		h.shareToRoom(d, pt.FlashS2C{ID: d.cID, R: m.R, G: m.G, B: m.B, Power: m.Power, Frames: m.Frames})
 
-	return
+	case pt.ShowPlayerBattleAnimC2S:
+		h.shareToRoom(d, pt.ShowPlayerBattleAnimS2C{ID: d.cID, AnimID: m.AnimID})
+
+	case pt.ShowPictureC2S:
+		// If there is already a picture
+		// with that ID, we will remove it
+		_, ok := d.activePictures[m.PicID]
+		if ok {
+			h.removePicture(d, m.PicID)
+		}
+
+		h.updatePicture(d, m.Picture)
+		h.shareToRoom(d, pt.ShowPictureS2C{ID: d.cID, Picture: m.Picture})
+	case pt.MovePictureC2S:
+		pic, ok := d.activePictures[m.PicID]
+		if !ok {
+			// No such picture?
+			// That's invalid but I won't do
+			// anything about it for now
+			return
+		}
+		pic.BasePicture = m.BasePicture
+
+		h.updatePicture(d, pic)
+		h.shareToRoom(d, pt.MovePictureS2C{ID: d.cID, BasePicture: m.BasePicture, Duration: m.Duration})
+
+	case pt.ErasePictureC2S:
+		_, ok := d.activePictures[m.PicID]
+		if !ok {
+			// Also no such picture..
+			return
+		}
+		h.removePicture(d, m.PicID)
+
+	default:
+		// If we registered a message type,
+		// we should also be handling it
+		panic("unhandled message type")
+	}
 }
 
 func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
@@ -300,9 +394,20 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 	// ..
 	msgs, err := pt.Deserialize(m[8:])
 	if err != nil {
-		log.Println("invalid packet")
+		log.Println("invalid packet:", err)
 		return
 	}
+
+	// Validate everything first so a packet is applied entirely
+	// or not at all since a legitimate client will never send an
+	// invalid packet.
+	for _, msg := range msgs {
+		if err := h.validateMessage(msg); err != nil {
+			log.Println("invalid message:", err)
+			return
+		}
+	}
+
 	for _, msg := range msgs {
 		h.processMessage(s, msg)
 	}

@@ -1,8 +1,6 @@
 package room
 
 import (
-	"errors"
-
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room/emitter"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
@@ -13,7 +11,6 @@ type clientData struct {
 	cID  int32
 	name string
 
-	// mocks for fields we don't implement yet
 	accountUUID string
 	rank        int32
 	loggedIn    bool
@@ -32,15 +29,11 @@ type clientData struct {
 	sprite       string
 	spriteIndex  int32
 	sysName      string
-}
 
-func (cd *clientData) setFacing(facing int32) (err error) {
-	if facing < 0 || facing > 3 {
-		err = errors.New("facing direction out of range")
-		return
-	}
-	cd.facing = facing
-	return
+	// We need to store what pictures somebody has shown,
+	// so that if another player joins, we can sync them
+	// those pictures
+	activePictures map[int32]pt.Picture
 }
 
 // Wrapper around a [gws.Conn].
@@ -101,6 +94,9 @@ func (u *User) GetIntroMessages() (msgs []any) {
 	}
 	if d.sysName != defaultSysName {
 		msgs = append(msgs, pt.SysNameS2C{ID: d.cID, Name: d.sysName})
+	}
+	for _, pic := range d.activePictures {
+		msgs = append(msgs, pt.ShowPictureS2C{ID: d.cID, Picture: pic})
 	}
 
 	return

@@ -82,7 +82,7 @@ func (l *Limiter) sweepLoop() {
 }
 
 // Middleware that caps how often a single IP can hit an endpoint.
-// Answers with [weberrors.ErrTooManyRequests] once their bucket runs dry.
+// Answers with [ErrTooManyRequests] once their bucket runs dry.
 func (l *Limiter) Check(next handleError) handleError {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
