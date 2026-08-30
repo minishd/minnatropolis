@@ -2,7 +2,6 @@ package room
 
 import (
 	"github.com/lxzan/gws"
-	"github.com/minishd/minnatropolis/api/room/emitter"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
 )
 
@@ -37,21 +36,17 @@ type clientData struct {
 }
 
 // Wrapper around a [gws.Conn].
-//
-// Implements [emitter.Subscriber] and provides
-// relevant utility functions.
 type User gws.Conn
 
 func NewUser(c *gws.Conn) *User { return (*User)(c) }
 
-func (u *User) GetMetadata() emitter.Metadata { return u.Conn().Session() }
-func (u *User) GetSubscriberID() int32        { return u.getData().cID }
-
 // Get underlying [gws.Conn].
 func (u *User) Conn() *gws.Conn { return (*gws.Conn)(u) }
 
+const kClientData = "cd"
+
 func (u *User) getData() *clientData {
-	cd, _ := u.GetMetadata().Load("cd")
+	cd, _ := u.Conn().Session().Load(kClientData)
 	return cd.(*clientData)
 }
 

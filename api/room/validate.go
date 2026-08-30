@@ -139,7 +139,7 @@ func (h *Handler) validateMessage(m any) error {
 	switch m := m.(type) {
 
 	case pt.SwitchRoomC2S:
-		if !h.filters.HasMap(m.RoomID) {
+		if !h.hasRoom(m.RoomID) {
 			return fmt.Errorf("unknown room id %d", m.RoomID)
 		}
 

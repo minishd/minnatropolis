@@ -7,16 +7,22 @@ import (
 	"log"
 	"math/rand/v2"
 	"net/http"
+	"slices"
 	"strconv"
+	"sync"
 	"sync/atomic"
 
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
-	"github.com/minishd/minnatropolis/api/room/emitter"
 	"github.com/minishd/minnatropolis/api/room/filters"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
 	"github.com/minishd/minnatropolis/datastore"
 )
+
+type room struct {
+	sync.RWMutex
+	members []*User
+}
 
 // Shared handler for room websocket events
 type Handler struct {
@@ -24,57 +30,29 @@ type Handler struct {
 
 	ds      *datastore.DataStore
 	filters *filters.Filters
-	em      *emitter.Emitter[int32, *User]
+
+	rooms map[int32]*room
+
+	// Increments by 1 for each
+	// connection opened
+	cIDCounter atomic.Int32
 }
 
 func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filters) *Handler {
+	rooms := make(map[int32]*room)
+	for roomID := range filters.GetMaps() {
+		rooms[roomID] = &room{}
+	}
+
 	return &Handler{
 		guardPSK: guardPSK,
 
 		ds:      ds,
 		filters: filters,
-		em:      emitter.New[int32, *User](),
+
+		rooms: rooms,
 	}
 }
-
-// Wrapper for pub/sub raw websocket message.
-type topicMessage struct {
-	excludeID int32
-	bc        *gws.Broadcaster
-}
-
-// Add a client to a websocket message topic.
-func (h *Handler) subscribeRawTopic(s *User, topic string) {
-	h.em.MakeSub(s, topic, func(msg any) {
-		tm := msg.(*topicMessage)
-
-		// Don't send if excluded
-		if s.GetSubscriberID() == tm.excludeID {
-			return
-		}
-
-		// Send the message
-		_ = tm.bc.Broadcast(s.Conn(), nil)
-	})
-}
-
-// Publish a websocket message to all clients of a topic.
-func (h *Handler) publishRawTopic(topic string, msg []byte, excludeID int32) {
-	// Set up broadcast wrapper
-	bc := gws.NewBroadcaster(gws.OpcodeBinary, msg)
-	tm := &topicMessage{
-		excludeID: excludeID,
-		bc:        bc,
-	}
-	defer bc.Close()
-
-	// Publish
-	h.em.Publish(topic, tm)
-}
-
-// Increments by 1 for each
-// connection opened
-var cIDCounter atomic.Int32
 
 // The values that clients will assume
 // if they aren't specified.
@@ -100,7 +78,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		return false
 	}
 	roomID := int32(roomID_)
-	if !h.filters.HasMap(roomID) {
+	if !h.hasRoom(roomID) {
 		// where are you going?
 		return false
 	}
@@ -129,8 +107,8 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	binary.BigEndian.PutUint32(guardKeyBytes, guardKey)
 
 	// Set up data
-	session.Store("cd", &clientData{
-		cID:           cIDCounter.Add(1),
+	session.Store(kClientData, &clientData{
+		cID:           h.cIDCounter.Add(1),
 		name:          username,
 		accountUUID:   accountUUID,
 		loggedIn:      loggedIn,
@@ -155,14 +133,54 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	return true
 }
 
-func roomTopic(roomID int32) string {
-	return "room-" + strconv.FormatInt(int64(roomID), 10)
+func (h *Handler) hasRoom(roomID int32) bool {
+	_, ok := h.rooms[roomID]
+	return ok
+}
+
+func (h *Handler) unsetRoom(m *User) {
+	d := m.getData()
+
+	// Remove them from their room
+	room := h.rooms[d.roomID]
+	room.Lock()
+	room.members = slices.DeleteFunc(room.members, func(rm *User) bool { return rm.getData().cID == d.cID })
+	room.Unlock()
+}
+
+func (h *Handler) setRoom(m *User, roomID int32) {
+	// Remove them from old room
+	h.unsetRoom(m)
+
+	// Put them in new room
+	room := h.rooms[roomID]
+	room.Lock()
+	room.members = append(room.members, m)
+	room.Unlock()
+
+	// Set their room ID
+	m.getData().roomID = roomID
 }
 
 // Send a message to everyone else in the room.
 func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
-	msgsBytes := pt.Serialize(msgs...)
-	h.publishRawTopic(roomTopic(d.roomID), msgsBytes, d.cID)
+	// Serialize and create [gws.Broadcaster]
+	msgBytes := pt.Serialize(msgs...)
+	bc := gws.NewBroadcaster(gws.OpcodeBinary, msgBytes)
+
+	// Send to room members
+	room := h.rooms[d.roomID]
+	room.RLock()
+	for _, m := range room.members {
+		// Skip if we're excluding this user
+		if m.getData().cID == d.cID {
+			continue
+		}
+
+		// Send the message
+		_ = bc.Broadcast(m.Conn(), nil)
+	}
+	room.RUnlock()
 }
 
 // Change from one room to another.
@@ -172,27 +190,26 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 	// If the two rooms are different,
 	// we need to handle leaving the other room
 	if newID != d.roomID {
-		// Unsubscribe from the topic
-		h.em.RemoveSub(u, roomTopic(d.roomID))
 		// Tell other players we left
 		h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})
 	}
 
 	// Introduce to new room
-	d.roomID = newID
-	u.Send(pt.RoomInfoS2C{RoomID: d.roomID})
-	topic := roomTopic(d.roomID)
-	h.subscribeRawTopic(u, topic)
+	u.Send(pt.RoomInfoS2C{RoomID: newID})
+	h.setRoom(u, newID)
 
 	// Tell us that everyone is here
 	var introMsgs []any
-	for _, o := range h.em.GetSubs(topic) {
-		if o.GetSubscriberID() == d.cID {
+	room := h.rooms[newID]
+	room.RLock()
+	for _, o := range room.members {
+		if o.getData().cID == d.cID {
 			continue
 		}
 		introMsgs = append(introMsgs, o.GetIntroMessages()...)
 	}
 	u.Send(introMsgs...)
+	room.RUnlock()
 
 	// Tell everyone else we're here
 	h.shareToRoom(d, u.GetIntroMessages()...)
@@ -200,7 +217,7 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 
 func (h *Handler) OnOpen(c *gws.Conn) {
 	s := NewUser(c)
-	log.Println("open cID=", s.GetSubscriberID())
+	log.Println("open cID=", s.getData().cID)
 
 	// Set up initial packets
 	// ..
@@ -415,14 +432,14 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 
 func (h *Handler) OnClose(c *gws.Conn, err error) {
 	s := NewUser(c)
-	log.Println("close cID=", s.GetSubscriberID())
+	log.Println("close cID=", s.getData().cID)
 
 	// Leave room
 	d := s.getData()
 	h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})
 
 	// Remove all subscriptions
-	h.em.DestroySub(s)
+	h.unsetRoom(s)
 }
 
 func (h *Handler) OnPing(c *gws.Conn, payload []byte) {
