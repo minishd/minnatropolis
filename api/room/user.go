@@ -28,6 +28,7 @@ type clientData struct {
 	sprite       string
 	spriteIndex  int32
 	sysName      string
+	flash        *pt.Flash
 
 	// We need to store what pictures somebody has shown,
 	// so that if another player joins, we can sync them
@@ -89,6 +90,9 @@ func (u *User) GetIntroMessages() (msgs []any) {
 	}
 	if d.sysName != defaultSysName {
 		msgs = append(msgs, pt.SysNameS2C{ID: d.cID, Name: d.sysName})
+	}
+	if d.flash != nil {
+		msgs = append(msgs, pt.RepeatingFlashS2C{ID: d.cID, Flash: *d.flash})
 	}
 	for _, pic := range d.activePictures {
 		msgs = append(msgs, pt.ShowPictureS2C{ID: d.cID, Picture: pic})

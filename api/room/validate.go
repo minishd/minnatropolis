@@ -133,6 +133,20 @@ func validateBasePicture(bp pt.BasePicture) error {
 	return nil
 }
 
+func validateFlash(f pt.Flash) error {
+	if !isValidRGB(f.R) || !isValidRGB(f.G) || !isValidRGB(f.B) {
+		return fmt.Errorf("flash rgb %d,%d,%d out of range", f.R, f.G, f.B)
+	}
+	if !isValidFlashPower(f.Power) {
+		return fmt.Errorf("flash power %d out of range", f.Power)
+	}
+	if !isValidFlashFrames(f.Frames) {
+		return fmt.Errorf("flash frames %d out of range", f.Frames)
+	}
+
+	return nil
+}
+
 // Validates requests and returns an error if
 // the message was tampered.
 func (h *Handler) validateMessage(m any) error {
@@ -196,15 +210,15 @@ func (h *Handler) validateMessage(m any) error {
 		}
 
 	case pt.FlashC2S:
-		if !isValidRGB(m.R) || !isValidRGB(m.G) || !isValidRGB(m.B) {
-			return fmt.Errorf("flash rgb %d,%d,%d out of range", m.R, m.G, m.B)
+		if err := validateFlash(m.Flash); err != nil {
+			return err
 		}
-		if !isValidFlashPower(m.Power) {
-			return fmt.Errorf("flash power %d out of range", m.Power)
+	case pt.RepeatingFlashC2S:
+		if err := validateFlash(m.Flash); err != nil {
+			return err
 		}
-		if !isValidFlashFrames(m.Frames) {
-			return fmt.Errorf("flash frames %d out of range", m.Frames)
-		}
+	case pt.RemoveRepeatingFlashC2S:
+		break
 
 	case pt.ShowPlayerBattleAnimC2S:
 		if !h.filters.HasBattleAnimID(m.AnimID) {

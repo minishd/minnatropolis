@@ -331,7 +331,13 @@ func (h *Handler) processMessage(u *User, m any) {
 		h.shareToRoom(d, pt.SoundEffectS2C{ID: d.cID, Name: m.Name, Volume: m.Volume, Tempo: m.Tempo, Balance: m.Balance})
 
 	case pt.FlashC2S:
-		h.shareToRoom(d, pt.FlashS2C{ID: d.cID, R: m.R, G: m.G, B: m.B, Power: m.Power, Frames: m.Frames})
+		h.shareToRoom(d, pt.FlashS2C{ID: d.cID, Flash: m.Flash})
+	case pt.RepeatingFlashC2S:
+		d.flash = &m.Flash
+		h.shareToRoom(d, pt.RepeatingFlashS2C{ID: d.cID, Flash: m.Flash})
+	case pt.RemoveRepeatingFlashC2S:
+		d.flash = nil
+		h.shareToRoom(d, pt.RemoveRepeatingFlashS2C{ID: d.cID})
 
 	case pt.ShowPlayerBattleAnimC2S:
 		h.shareToRoom(d, pt.ShowPlayerBattleAnimS2C{ID: d.cID, AnimID: m.AnimID})

@@ -42,6 +42,11 @@ type Picture struct {
 	Origin int32
 }
 
+type Flash struct {
+	R, G, B       int32
+	Power, Frames int32
+}
+
 // ********** Server -> Client **********
 // These packets are sent by the server
 // to clients (minnaengine).
@@ -126,9 +131,17 @@ type SoundEffectS2C struct {
 }
 
 type FlashS2C struct {
-	ID            int32
-	R, G, B       int32
-	Power, Frames int32
+	ID    int32
+	Flash Flash
+}
+
+type RepeatingFlashS2C struct {
+	ID    int32
+	Flash Flash
+}
+
+type RemoveRepeatingFlashS2C struct {
+	ID int32
 }
 
 type ShowPlayerBattleAnimS2C struct {
@@ -222,9 +235,14 @@ type SoundEffectC2S struct {
 }
 
 type FlashC2S struct {
-	R, G, B       int32
-	Power, Frames int32
+	Flash Flash
 }
+
+type RepeatingFlashC2S struct {
+	Flash Flash
+}
+
+type RemoveRepeatingFlashC2S struct{}
 
 type ShowPlayerBattleAnimC2S struct {
 	AnimID int32
@@ -276,6 +294,8 @@ func init() {
 	registerS2C[SysNameS2C]("sys")
 	registerS2C[SoundEffectS2C]("se")
 	registerS2C[FlashS2C]("fl")
+	registerS2C[RepeatingFlashS2C]("rfl")
+	registerS2C[RemoveRepeatingFlashS2C]("rrfl")
 	registerS2C[ShowPlayerBattleAnimS2C]("ba")
 	registerS2C[BattleAnimSyncListS2C]("bas")
 	registerS2C[PictureSyncListS2C]("pns")
@@ -295,6 +315,8 @@ func init() {
 	registerC2S[TransparencyC2S]("tr")
 	registerC2S[SoundEffectC2S]("se")
 	registerC2S[FlashC2S]("fl")
+	registerC2S[RepeatingFlashC2S]("rfl")
+	registerC2S[RemoveRepeatingFlashC2S]("rrfl")
 	registerC2S[ShowPlayerBattleAnimC2S]("ba")
 	registerC2S[ShowPictureC2S]("ap")
 	registerC2S[MovePictureC2S]("mp")
