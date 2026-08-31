@@ -53,14 +53,69 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
-const deleteSessionToken = `-- name: DeleteSessionToken :exec
+const deleteBlockRelation = `-- name: DeleteBlockRelation :execrows
+DELETE FROM block_relations
+WHERE origin_user = $1
+  AND blocked_user = $2
+`
+
+type DeleteBlockRelationParams struct {
+	OriginUser  uuid.UUID
+	BlockedUser uuid.UUID
+}
+
+func (q *Queries) DeleteBlockRelation(ctx context.Context, arg DeleteBlockRelationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteBlockRelation, arg.OriginUser, arg.BlockedUser)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteSessionToken = `-- name: DeleteSessionToken :execrows
 DELETE FROM session_tokens
 WHERE id = $1
 `
 
-func (q *Queries) DeleteSessionToken(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteSessionToken, id)
-	return err
+func (q *Queries) DeleteSessionToken(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSessionToken, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getUserBlockList = `-- name: GetUserBlockList :many
+SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash
+FROM block_relations br
+JOIN users u ON u.id = br.blocked_user
+WHERE origin_user = $1
+`
+
+func (q *Queries) GetUserBlockList(ctx context.Context, originUser uuid.UUID) ([]User, error) {
+	rows, err := q.db.Query(ctx, getUserBlockList, originUser)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.Username,
+			&i.PwHashType,
+			&i.PwHash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
@@ -79,6 +134,21 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 		&i.PwHash,
 	)
 	return i, err
+}
+
+const insertBlockRelation = `-- name: InsertBlockRelation :exec
+INSERT INTO block_relations (origin_user, blocked_user)
+VALUES ($1, $2)
+`
+
+type InsertBlockRelationParams struct {
+	OriginUser  uuid.UUID
+	BlockedUser uuid.UUID
+}
+
+func (q *Queries) InsertBlockRelation(ctx context.Context, arg InsertBlockRelationParams) error {
+	_, err := q.db.Exec(ctx, insertBlockRelation, arg.OriginUser, arg.BlockedUser)
+	return err
 }
 
 const insertSessionToken = `-- name: InsertSessionToken :exec
@@ -105,7 +175,7 @@ SELECT st.id, st.created_at, st.for_user, st.token, st.expires_at,
     u.pw_hash_type AS user_pw_hash_type,
     u.pw_hash AS user_pw_hash
 FROM session_tokens st
-JOIN users u ON st.for_user = u.id
+JOIN users u ON u.id = st.for_user
 WHERE token = $1
   AND expires_at > CURRENT_TIMESTAMP
 `

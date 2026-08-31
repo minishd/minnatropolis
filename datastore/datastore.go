@@ -14,8 +14,10 @@ import (
 )
 
 var (
-	ErrNotUnique  = errors.New("not unique")
-	ErrFailsCheck = errors.New("fails check")
+	ErrNotUnique   = errors.New("not unique")
+	ErrFailsCheck  = errors.New("fails check")
+	ErrNotFound    = errors.New("not found")
+	ErrUnknownFkey = errors.New("foreign-key violation")
 )
 
 // Database abstraction to decouple
@@ -39,6 +41,8 @@ func checkPgError(err error) error {
 			return ErrNotUnique
 		case pgerrcode.CheckViolation:
 			return ErrFailsCheck
+		case pgerrcode.ForeignKeyViolation:
+			return ErrUnknownFkey
 		}
 	}
 	return nil
@@ -75,16 +79,12 @@ func (ds *DataStore) GetUserByUsername(ctx context.Context, username string) (*U
 }
 
 func (ds *DataStore) InsertSessionToken(ctx context.Context, forUser uuid.UUID, token string, expiresAt time.Time) error {
-	err := ds.q.InsertSessionToken(ctx, queries.InsertSessionTokenParams{
+	return ds.q.InsertSessionToken(ctx, queries.InsertSessionTokenParams{
 		ForUser:   forUser,
 		Token:     token,
 		ExpiresAt: expiresAt,
 	})
-	// Token collisions not accounted for..
-	if err != nil {
-		return err
-	}
-	return nil
+	// Token collisions not accounted for
 }
 
 func (ds *DataStore) LookupSessionToken(ctx context.Context, token string) (*SessionToken, error) {
@@ -102,7 +102,14 @@ func (ds *DataStore) LookupSessionToken(ctx context.Context, token string) (*Ses
 }
 
 func (ds *DataStore) DeleteSessionToken(ctx context.Context, id uuid.UUID) error {
-	return ds.q.DeleteSessionToken(ctx, id)
+	rows, err := ds.q.DeleteSessionToken(ctx, id)
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (ds *DataStore) ClearOtherSessionTokensForUser(ctx context.Context, forUser, exceptFor uuid.UUID) error {
@@ -117,4 +124,49 @@ func (ds *DataStore) UpdateSessionTokenExpiry(ctx context.Context, id uuid.UUID,
 		ID:        id,
 		ExpiresAt: expiresAt,
 	})
+}
+
+func (ds *DataStore) InsertBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) error {
+	err := ds.q.InsertBlockRelation(ctx, queries.InsertBlockRelationParams{
+		OriginUser:  originUser,
+		BlockedUser: blockedUser,
+	})
+
+	// We require each relation to be unique,
+	// so check for unique violation error.
+	// Also bad user IDs.
+	if err := checkPgError(err); err != nil {
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (ds *DataStore) DeleteBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) error {
+	rows, err := ds.q.DeleteBlockRelation(ctx, queries.DeleteBlockRelationParams{
+		OriginUser:  originUser,
+		BlockedUser: blockedUser,
+	})
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (ds *DataStore) GetBlockedUsers(ctx context.Context, originUser uuid.UUID) ([]*User, error) {
+	users, err := ds.q.GetUserBlockList(ctx, originUser)
+	if err != nil {
+		return nil, err
+	}
+
+	var appUsers []*User
+	for _, user := range users {
+		appUsers = append(appUsers, dbUserToApp(user))
+	}
+	return appUsers, nil
 }
