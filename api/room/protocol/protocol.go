@@ -52,7 +52,7 @@ func deserializeFields(packetName string, typ reflect.Type, parts []string) (msg
 		// Hand off the rest of the parts
 		// to be parsed as the struct's type
 		switch field.(type) {
-		case BasePicture, Picture:
+		case BasePicture, Picture, Flash:
 			nextMsg, nextNPU, err_ := deserializeFields(packetName, fieldValue.Type(), parts[i:])
 			if err_ != nil {
 				err = err_
@@ -231,7 +231,7 @@ func serializeFields(msg any) (msgBytes []byte) {
 			}
 			msgBytes = append(msgBytes, byte(digit))
 
-		case Picture, BasePicture:
+		case Picture, BasePicture, Flash:
 			msgBytes = append(msgBytes, serializeFields(field)...)
 
 		case int, uint, uintptr:
