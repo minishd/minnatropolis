@@ -32,10 +32,11 @@ type configFile struct {
 
 	GuardPSK string
 	Filter   struct {
-		IndexPath       string
-		PictureNames    []string
-		PicturePrefixes []string
-		BattleAnimIDs   []int32
+		IndexPath         string
+		SingleplayerRooms []int32
+		PictureNames      []string
+		PicturePrefixes   []string
+		BattleAnimIDs     []int32
 	}
 }
 
@@ -76,6 +77,7 @@ func run(rootCtx context.Context) error {
 		cfg.Filter.BattleAnimIDs,
 		cfg.Filter.PictureNames,
 		cfg.Filter.PicturePrefixes,
+		cfg.Filter.SingleplayerRooms,
 	)
 	if err != nil {
 		return err

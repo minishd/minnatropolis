@@ -21,6 +21,7 @@ type Filters struct {
 	maps    map[int32]struct{}
 
 	// Manually specified..
+	spMaps          map[int32]struct{}
 	pictureNames    []string
 	picturePrefixes []string
 	battleAnimIDs   []int32
@@ -53,7 +54,8 @@ func (f *Filters) HasPicture(name string) bool {
 	// No match
 	return false
 }
-func (f *Filters) HasBattleAnimID(id int32) bool { return slices.Contains(f.battleAnimIDs, id) }
+func (f *Filters) HasBattleAnimID(id int32) bool   { return slices.Contains(f.battleAnimIDs, id) }
+func (f *Filters) IsMapSingleplayer(id int32) bool { return has(f.spMaps, id) }
 
 func (f *Filters) GetMaps() iter.Seq[int32]     { return maps.Keys(f.maps) }
 func (f *Filters) GetPictureNames() []string    { return f.pictureNames }
@@ -75,6 +77,15 @@ type cacheDirs struct {
 func strip(set map[string]any) map[string]struct{} {
 	out := make(map[string]struct{})
 	for name, _ := range set {
+		out[name] = struct{}{}
+	}
+	return out
+}
+
+// Turn a slice into a set
+func setify[T comparable](slice []T) map[T]struct{} {
+	out := make(map[T]struct{})
+	for _, name := range slice {
 		out[name] = struct{}{}
 	}
 	return out
@@ -116,7 +127,10 @@ func getMaps(set map[string]any) map[int32]struct{} {
 }
 
 // Reads index.json produced by gencache.
-func Load(path string, battleAnimIDs []int32, pictureNames []string, picturePrefixes []string) (*Filters, error) {
+func Load(path string, battleAnimIDs []int32,
+	pictureNames []string, picturePrefixes []string,
+	singleplayerRooms []int32,
+) (*Filters, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read asset index: %w", err)
@@ -143,22 +157,23 @@ func Load(path string, battleAnimIDs []int32, pictureNames []string, picturePref
 
 	sprites := strip(dirs.CharSet)
 	systems := strip(dirs.System)
-
 	maps := getMaps(all)
+	spMaps := setify(singleplayerRooms)
 
 	log.Printf(
 		"asset index: %d sprites, %d systems, %d maps",
 		len(sprites), len(systems), len(maps),
 	)
 	log.Printf(
-		"filter config: %d battle anims, %d pictures, %d picture prefixes",
-		len(battleAnimIDs), len(pictureNames), len(picturePrefixes),
+		"filter config: %d battle anims, %d pictures, %d picture prefixes, %d sp maps",
+		len(battleAnimIDs), len(pictureNames), len(picturePrefixes), len(spMaps),
 	)
 	return &Filters{
 		sprites: sprites,
 		systems: systems,
 		maps:    maps,
 
+		spMaps:          spMaps,
 		pictureNames:    pictureNames,
 		picturePrefixes: picturePrefixes,
 		battleAnimIDs:   battleAnimIDs,

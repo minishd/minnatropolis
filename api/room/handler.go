@@ -164,6 +164,12 @@ func (h *Handler) setRoom(m *User, roomID int32) {
 
 // Send a message to everyone else in the room.
 func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
+	// Skip if it's a room where we don't
+	// want to network players (singleplayer)
+	if h.filters.IsMapSingleplayer(d.roomID) {
+		return
+	}
+
 	// Serialize and create [gws.Broadcaster]
 	msgBytes := pt.Serialize(msgs...)
 	bc := gws.NewBroadcaster(gws.OpcodeBinary, msgBytes)
@@ -198,18 +204,21 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 	u.Send(pt.RoomInfoS2C{RoomID: newID})
 	h.setRoom(u, newID)
 
-	// Tell us that everyone is here
-	var introMsgs []any
-	room := h.rooms[newID]
-	room.RLock()
-	for _, o := range room.members {
-		if o.getData().cID == d.cID {
-			continue
+	// Tell us that everyone is here,
+	// if it is not a singleplayer map
+	if !h.filters.IsMapSingleplayer(newID) {
+		var introMsgs []any
+		room := h.rooms[newID]
+		room.RLock()
+		for _, o := range room.members {
+			if o.getData().cID == d.cID {
+				continue
+			}
+			introMsgs = append(introMsgs, o.GetIntroMessages()...)
 		}
-		introMsgs = append(introMsgs, o.GetIntroMessages()...)
+		u.Send(introMsgs...)
+		room.RUnlock()
 	}
-	u.Send(introMsgs...)
-	room.RUnlock()
 
 	// Tell everyone else we're here
 	h.shareToRoom(d, u.GetIntroMessages()...)
