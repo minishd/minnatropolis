@@ -4,15 +4,16 @@ import (
 	"context"
 	"embed"
 	"encoding/hex"
+	"errors"
+	"flag"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/goccy/go-yaml"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
@@ -25,13 +26,17 @@ import (
 //go:embed sql/migrations/*.sql
 var embedMigrations embed.FS
 
-func getFilterList(key string) (list []string) {
-	listStr := os.Getenv(key)
-	if listStr == "" {
-		return
+type configFile struct {
+	DBConnect string
+	ListenOn  string
+
+	GuardPSK string
+	Filter   struct {
+		IndexPath       string
+		PictureNames    []string
+		PicturePrefixes []string
+		BattleAnimIDs   []int32
 	}
-	list = strings.Split(listStr, ":")
-	return
 }
 
 func run(rootCtx context.Context) error {
@@ -39,34 +44,45 @@ func run(rootCtx context.Context) error {
 	ctx, cancel := signal.NotifyContext(rootCtx, os.Interrupt)
 	defer cancel()
 
-	// Load env
-	listenOn := os.Getenv("LISTEN_ON")
-	dbConnect := os.Getenv("DB_CONNECT")
-	guardPSK, err := hex.DecodeString(os.Getenv("GUARD_PSK"))
+	// Load args
+	configPath := flag.String("config", "config.yaml", "path to config file")
+	flag.Parse()
+
+	// Load config
+	configData, err := os.ReadFile(*configPath)
 	if err != nil {
 		return err
 	}
-
-	pictureNames := getFilterList("FILTER_PICTURE_NAMES")
-	picturePrefixes := getFilterList("FILTER_PICTURE_PREFIXES")
-	battleAnimIDsStr := getFilterList("FILTER_BATTLE_ANIM_IDS")
-	var battleAnimIDs []int32
-	for _, idStr := range battleAnimIDsStr {
-		id_, err := strconv.Atoi(idStr)
-		if err != nil {
-			return err
-		}
-		battleAnimIDs = append(battleAnimIDs, int32(id_))
+	var cfg configFile
+	if err := yaml.Unmarshal(configData, &cfg); err != nil {
+		return err
 	}
 
-	indexPath := os.Getenv("FILTER_INDEX_PATH")
-	filters, err := filters.Load(indexPath, battleAnimIDs, pictureNames, picturePrefixes)
+	// Check config
+	guardPSK, err := hex.DecodeString(cfg.GuardPSK)
+	if err != nil {
+		return err
+	}
+	if cfg.DBConnect == "" {
+		return errors.New("no db connect URI was specified")
+	}
+	if cfg.Filter.IndexPath == "" {
+		return errors.New("index path wasn't specified")
+	}
+
+	// Set up filters
+	filters, err := filters.Load(
+		cfg.Filter.IndexPath,
+		cfg.Filter.BattleAnimIDs,
+		cfg.Filter.PictureNames,
+		cfg.Filter.PicturePrefixes,
+	)
 	if err != nil {
 		return err
 	}
 
 	// Connect to DB
-	pool, err := pgxpool.New(ctx, dbConnect)
+	pool, err := pgxpool.New(ctx, cfg.DBConnect)
 	if err != nil {
 		return err
 	}
@@ -95,7 +111,7 @@ func run(rootCtx context.Context) error {
 
 	// Set up server
 	server := &http.Server{
-		Addr:    listenOn,
+		Addr:    cfg.ListenOn,
 		Handler: mux,
 	}
 

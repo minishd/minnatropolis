@@ -1,0 +1,17 @@
+# Example `config.yaml` file that matches
+# with the `docker-compose.yaml`
+# and `.env.example`.
+# The filter settings provided are intended
+# for the game Collective Unconscious.
+
+dbconnect: postgres://admin:admin@localhost/minnatropolis
+listenon: 127.0.0.1:8080
+guardpsk:
+
+filter:
+  indexpath: index.json
+  battleanimids:
+  picturenames:
+  pictureprefixes:
+    - protag_
+    - $protag_

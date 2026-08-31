@@ -13,6 +13,8 @@ require (
 	github.com/pressly/goose/v3 v3.27.3
 )
 
+require github.com/goccy/go-yaml v1.19.2
+
 require (
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
