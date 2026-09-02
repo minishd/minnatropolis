@@ -23,12 +23,14 @@ var (
 // Database abstraction to decouple
 // DB code from rest of app code
 type DataStore struct {
-	q *queries.Queries
+	q    *queries.Queries
+	pool *pgxpool.Pool
 }
 
 func New(pool *pgxpool.Pool) *DataStore {
 	return &DataStore{
-		q: queries.New(pool),
+		q:    queries.New(pool),
+		pool: pool,
 	}
 }
 
@@ -126,40 +128,8 @@ func (ds *DataStore) UpdateSessionTokenExpiry(ctx context.Context, id uuid.UUID,
 	})
 }
 
-func (ds *DataStore) InsertBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) error {
-	err := ds.q.InsertBlockRelation(ctx, queries.InsertBlockRelationParams{
-		OriginUser:  originUser,
-		BlockedUser: blockedUser,
-	})
-
-	// We require each relation to be unique,
-	// so check for unique violation error.
-	// Also bad user IDs.
-	if err := checkPgError(err); err != nil {
-		return err
-	}
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (ds *DataStore) DeleteBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) error {
-	rows, err := ds.q.DeleteBlockRelation(ctx, queries.DeleteBlockRelationParams{
-		OriginUser:  originUser,
-		BlockedUser: blockedUser,
-	})
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-func (ds *DataStore) GetBlockedUsers(ctx context.Context, originUser uuid.UUID) ([]*User, error) {
-	users, err := ds.q.GetUserBlockList(ctx, originUser)
+func getBlockedUsers(ctx context.Context, q *queries.Queries, originUser uuid.UUID) ([]*User, error) {
+	users, err := q.GetUserBlockList(ctx, originUser)
 	if err != nil {
 		return nil, err
 	}
@@ -169,4 +139,75 @@ func (ds *DataStore) GetBlockedUsers(ctx context.Context, originUser uuid.UUID) 
 		appUsers = append(appUsers, dbUserToApp(user))
 	}
 	return appUsers, nil
+}
+
+func (ds *DataStore) GetBlockedUsers(ctx context.Context, originUser uuid.UUID) ([]*User, error) {
+	return getBlockedUsers(ctx, ds.q, originUser)
+}
+
+func (ds *DataStore) InsertBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) ([]*User, error) {
+	tx, err := ds.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	qtx := ds.q.WithTx(tx)
+
+	err = qtx.InsertBlockRelation(ctx, queries.InsertBlockRelationParams{
+		OriginUser:  originUser,
+		BlockedUser: blockedUser,
+	})
+	// We require each relation to be unique,
+	// so check for unique violation error.
+	// Also bad user IDs.
+	if err := checkPgError(err); err != nil {
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	users, err := getBlockedUsers(ctx, qtx, originUser)
+	if err != nil {
+		return nil, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+func (ds *DataStore) DeleteBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) ([]*User, error) {
+	tx, err := ds.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	qtx := ds.q.WithTx(tx)
+
+	rows, err := qtx.DeleteBlockRelation(ctx, queries.DeleteBlockRelationParams{
+		OriginUser:  originUser,
+		BlockedUser: blockedUser,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if rows == 0 {
+		return nil, ErrNotFound
+	}
+
+	users, err := getBlockedUsers(ctx, qtx, originUser)
+	if err != nil {
+		return nil, err
+	}
+
+	err = tx.Commit(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }

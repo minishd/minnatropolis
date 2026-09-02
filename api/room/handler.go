@@ -31,7 +31,9 @@ type Handler struct {
 	ds      *datastore.DataStore
 	filters *filters.Filters
 
-	rooms map[int32]*room
+	rooms   map[int32]*room
+	users   map[uuid.UUID]*User
+	usersMu sync.RWMutex
 
 	// Increments by 1 for each
 	// connection opened
@@ -44,6 +46,8 @@ func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filte
 		rooms[roomID] = &room{}
 	}
 
+	users := make(map[uuid.UUID]*User)
+
 	return &Handler{
 		guardPSK: guardPSK,
 
@@ -51,6 +55,7 @@ func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filte
 		filters: filters,
 
 		rooms: rooms,
+		users: users,
 	}
 }
 
@@ -86,20 +91,47 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	// Get token
 	token := r.URL.Query().Get("token")
 
-	// Look up token
+	// Player fields
+	username := "" // set it empty, guests are name-less.
+	accountUUID := uuid.New()
+	loggedIn := false
+	blocklist := make(map[uuid.UUID]struct{})
+
+	// Look up token, if present
 	ctx := r.Context()
-	st, _ := h.ds.LookupSessionToken(ctx, token)
+	var st *datastore.SessionToken
+	if token != "" {
+		st, err = h.ds.LookupSessionToken(ctx, token)
+		if err != nil {
+			log.Println("session token lookup failed:", err)
+			// we'll let them through still,
+			// but they will be a guest
+		}
+	}
 
 	// Get player fields
-	username := "" // set it empty, guests are name-less.
-	accountUUID := uuid.NewString()
-	loggedIn := false
-
 	if st != nil {
 		username = st.ForUser.Username
-		accountUUID = st.ForUser.ID.String()
+		accountUUID = st.ForUser.ID
 		loggedIn = true
+
+		// Also look up blocklist
+		users, err := h.ds.GetBlockedUsers(ctx, st.ForUser.ID)
+		if err != nil {
+			log.Println("blocklist lookup failed:", err)
+			// still let them through
+		}
+		for _, user := range users {
+			blocklist[user.ID] = struct{}{}
+		}
 	}
+
+	// Don't allow the same user to connect twice
+	h.usersMu.RLock()
+	if _, ok := h.users[accountUUID]; ok {
+		return false
+	}
+	h.usersMu.RUnlock()
 
 	// Make guard key
 	guardKey := rand.Uint32()
@@ -112,6 +144,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		name:          username,
 		accountUUID:   accountUUID,
 		loggedIn:      loggedIn,
+		blocklist:     blocklist,
 		guardKey:      guardKey,
 		guardKeyBytes: guardKeyBytes,
 
@@ -162,11 +195,119 @@ func (h *Handler) setRoom(m *User, roomID int32) {
 	m.getData().roomID = roomID
 }
 
-// Send a message to everyone else in the room.
+// Update a user's blocklist, showing & hiding players
+// as needed
+func (h *Handler) UpdateBlockList(accountUUID uuid.UUID, blocked []*datastore.User) {
+	// Find the user
+	u, ok := h.users[accountUUID]
+	if !ok {
+		// Seems not online
+		return
+	}
+
+	// Lock blocklist
+	// We don't want another update to come in
+	// as we're dispatching connect/disconnect packets
+	// That could cause invalid states
+	d := u.getData()
+	d.blocklistMu.Lock()
+	defer d.blocklistMu.Unlock()
+
+	// Make new blocklist
+	blocklistNew := make(map[uuid.UUID]struct{}, len(blocked))
+	for _, user := range blocked {
+		blocklistNew[user.ID] = struct{}{}
+	}
+
+	// Lock users
+	h.usersMu.RLock()
+	defer h.usersMu.RUnlock()
+
+	// Handle disconnections
+	for id, _ := range blocklistNew {
+		// Skip if already blocked
+		if _, ok := d.blocklist[id]; ok {
+			continue
+		}
+		// Get user
+		user, ok := h.users[id]
+		if !ok {
+			// Not online
+			continue
+		}
+		// Skip if not in same room
+		data := user.getData()
+		if d.roomID != data.roomID {
+			continue
+		}
+		// Hide players from eachother
+		u.Send(pt.DisconnectS2C{ID: data.cID})
+		user.Send(pt.DisconnectS2C{ID: d.cID})
+	}
+
+	// Handle connections
+	for id, _ := range d.blocklist {
+		// Skip if still blocked
+		if _, ok := blocklistNew[id]; ok {
+			continue
+		}
+		// Get user
+		user, ok := h.users[id]
+		if !ok {
+			// Not here..
+			continue
+		}
+		// Skip if not in same room
+		if d.roomID != user.getData().roomID {
+			continue
+		}
+		// Show them
+		u.Send(user.GetIntroMessages()...)
+		user.Send(u.GetIntroMessages()...)
+	}
+
+	// Set blocklist
+	d.blocklist = blocklistNew
+}
+
+// Whether or not we should skip packets in a room.
+func (h *Handler) arePacketsSkippedMap(us *clientData) bool {
+	return h.filters.IsMapSingleplayer(us.roomID)
+}
+
+// Whether or not we should skip packets about a player.
+func (h *Handler) arePacketsSkippedPlayer(us *clientData, them *clientData) bool {
+	// Is it ourselves? We already know what we sent
+	if us.cID == them.cID {
+		return true
+	}
+
+	// Lock blocklists so we can check safely
+	us.blocklistMu.RLock()
+	them.blocklistMu.RLock()
+	defer us.blocklistMu.RUnlock()
+	defer them.blocklistMu.RUnlock()
+
+	// Did we block them?
+	if _, ok := us.blocklist[them.accountUUID]; ok {
+		// Yes, don't replicate..
+		return true
+	}
+	// Did they block us?
+	if _, ok := them.blocklist[us.accountUUID]; ok {
+		// Yes, also don't replicate
+		return true
+	}
+
+	// Nobody blocked eachother :)
+	return false
+}
+
+// Send a message to everyone else inrack the room.
 func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
 	// Skip if it's a room where we don't
 	// want to network players (singleplayer)
-	if h.filters.IsMapSingleplayer(d.roomID) {
+	if h.arePacketsSkippedMap(d) {
 		return
 	}
 
@@ -178,8 +319,7 @@ func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
 	room := h.rooms[d.roomID]
 	room.RLock()
 	for _, m := range room.members {
-		// Skip if we're excluding this user
-		if m.getData().cID == d.cID {
+		if h.arePacketsSkippedPlayer(d, m.getData()) {
 			continue
 		}
 
@@ -206,15 +346,15 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 
 	// Tell us that everyone is here,
 	// if it is not a singleplayer map
-	if !h.filters.IsMapSingleplayer(newID) {
+	if !h.arePacketsSkippedMap(d) {
 		var introMsgs []any
 		room := h.rooms[newID]
 		room.RLock()
-		for _, o := range room.members {
-			if o.getData().cID == d.cID {
+		for _, m := range room.members {
+			if h.arePacketsSkippedPlayer(d, m.getData()) {
 				continue
 			}
-			introMsgs = append(introMsgs, o.GetIntroMessages()...)
+			introMsgs = append(introMsgs, m.GetIntroMessages()...)
 		}
 		u.Send(introMsgs...)
 		room.RUnlock()
@@ -228,9 +368,29 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	s := NewUser(c)
 	log.Println("open cID=", s.getData().cID)
 
+	// Add to user registry
+	// ..
+	// We don't do it in [Handler.Authorize] because
+	// it's called before there's a [gws.Conn]
+	d := s.getData()
+	h.usersMu.Lock()
+
+	// Double-check that they didn't connect
+	// in between [Handler.Authorize]'s check
+	// and now..
+	if _, ok := h.users[d.accountUUID]; ok {
+		// They did, so close this connection
+		log.Println("early close cID=", s.getData().cID)
+		s.Conn().WriteClose(1000, nil)
+		return
+	}
+
+	// Seems ok so add them
+	h.users[d.accountUUID] = s
+	h.usersMu.Unlock()
+
 	// Set up initial packets
 	// ..
-	d := s.getData()
 	initial := []any{
 		pt.SyncPlayerDataS2C{
 			HostID:     d.cID,
@@ -248,22 +408,19 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	// That is because if you send an empty pic. prefix
 	// sync list, the client will begin to sync every picture
 	// I am assuming that is an engine bug..
-	picNames := h.filters.GetPictureNames()
-	picPrefixes := h.filters.GetPicturePrefixes()
-	battleAnimIDs := h.filters.GetBattleAnimIDs()
-	if len(picNames) != 0 {
+	if picNames := h.filters.GetPictureNames(); len(picNames) != 0 {
 		initial = append(initial, pt.PictureSyncListS2C{
 			Type: pt.PictureListName,
 			List: picNames,
 		})
 	}
-	if len(picPrefixes) != 0 {
+	if picPrefixes := h.filters.GetPicturePrefixes(); len(picPrefixes) != 0 {
 		initial = append(initial, pt.PictureSyncListS2C{
 			Type: pt.PictureListPrefix,
 			List: picPrefixes,
 		})
 	}
-	if len(battleAnimIDs) != 0 {
+	if battleAnimIDs := h.filters.GetBattleAnimIDs(); len(battleAnimIDs) != 0 {
 		initial = append(initial, pt.BattleAnimSyncListS2C{
 			IDs: battleAnimIDs,
 		})
@@ -449,8 +606,13 @@ func (h *Handler) OnClose(c *gws.Conn, err error) {
 	s := NewUser(c)
 	log.Println("close cID=", s.getData().cID)
 
-	// Leave room
+	// Remove from user registry
 	d := s.getData()
+	h.usersMu.Lock()
+	delete(h.users, d.accountUUID)
+	h.usersMu.Unlock()
+
+	// Leave room
 	h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})
 
 	// Remove all subscriptions

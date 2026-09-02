@@ -2,6 +2,8 @@ package protocol
 
 import (
 	"reflect"
+
+	"github.com/google/uuid"
 )
 
 // ********** General Types **********
@@ -54,7 +56,7 @@ type Flash struct {
 type SyncPlayerDataS2C struct {
 	HostID     int32
 	Key        uint32
-	UUID       string
+	UUID       uuid.UUID
 	Rank       int32
 	IsLoggedIn bool
 	Badge      string
@@ -66,7 +68,7 @@ type RoomInfoS2C struct {
 
 type ConnectS2C struct {
 	ID         int32
-	UUID       string
+	UUID       uuid.UUID
 	Rank       int32
 	IsLoggedIn bool
 	Badge      string

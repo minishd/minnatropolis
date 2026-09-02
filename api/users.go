@@ -4,33 +4,25 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
 )
 
 type usersHandlers struct {
 	ds *datastore.DataStore
+	rh *room.Handler
 }
 
-// Returns all accounts the user has blocked
-// (Needs authentication)
-func (h *usersHandlers) handleBlockList(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
-	type blocklistEntry struct {
-		ID       uuid.UUID
-		Username string
-	}
-	type blocklistRes struct {
-		Blocked []blocklistEntry
-	}
+type blocklistEntry struct {
+	ID       uuid.UUID
+	Username string
+}
+type blocklistRes struct {
+	Blocked []blocklistEntry
+}
 
-	// Look up user's block list
-	ctx := r.Context()
-	users, err := h.ds.GetBlockedUsers(ctx, session.ForUser.ID)
-	if err != nil {
-		return
-	}
-
-	// Convert to blocklist entries
+func usersToBlockList(users []*datastore.User) []blocklistEntry {
 	blocked := []blocklistEntry{}
 	for _, user := range users {
 		blocked = append(blocked, blocklistEntry{
@@ -38,7 +30,21 @@ func (h *usersHandlers) handleBlockList(w http.ResponseWriter, r *http.Request, 
 			Username: user.Username,
 		})
 	}
+	return blocked
+}
 
+// Returns all accounts the user has blocked
+// (Needs authentication)
+func (h *usersHandlers) handleBlockList(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	// Look up user's block list
+	ctx := r.Context()
+	users, err := h.ds.GetBlockedUsers(ctx, session.ForUser.ID)
+	if err != nil {
+		return
+	}
+
+	// Convert to blocklist entries, return..
+	blocked := usersToBlockList(users)
 	web.SendResOK(w, blocklistRes{blocked})
 	return
 }
@@ -49,9 +55,7 @@ func (h *usersHandlers) handleBlockListAdd(w http.ResponseWriter, r *http.Reques
 	type blocklistAddReq struct {
 		UserID uuid.UUID
 	}
-	type blocklistAddRes struct {
-		Success bool
-	}
+	type blocklistAddRes = blocklistRes
 
 	// Parse request
 	req, err := web.ParseReq[blocklistAddReq](r)
@@ -61,7 +65,7 @@ func (h *usersHandlers) handleBlockListAdd(w http.ResponseWriter, r *http.Reques
 
 	// Try to add blocked user
 	ctx := r.Context()
-	err = h.ds.InsertBlockRelation(ctx, session.ForUser.ID, req.UserID)
+	users, err := h.ds.InsertBlockRelation(ctx, session.ForUser.ID, req.UserID)
 	switch err {
 	case datastore.ErrNotUnique:
 		err = web.ErrAlreadyBlocked
@@ -72,8 +76,12 @@ func (h *usersHandlers) handleBlockListAdd(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Update multiplayer
+	h.rh.UpdateBlockList(session.ForUser.ID, users)
+
 	// No error, they should be blocked now
-	web.SendResOK(w, blocklistAddRes{true})
+	blocked := usersToBlockList(users)
+	web.SendResOK(w, blocklistAddRes{blocked})
 	return
 }
 
@@ -83,9 +91,7 @@ func (h *usersHandlers) handleBlockListRemove(w http.ResponseWriter, r *http.Req
 	type blocklistRemoveReq struct {
 		UserID uuid.UUID
 	}
-	type blocklistRemoveRes struct {
-		Success bool
-	}
+	type blocklistRemoveRes = blocklistRes
 
 	// Parse request
 	req, err := web.ParseReq[blocklistRemoveReq](r)
@@ -95,7 +101,7 @@ func (h *usersHandlers) handleBlockListRemove(w http.ResponseWriter, r *http.Req
 
 	// Try to remove blocked user
 	ctx := r.Context()
-	err = h.ds.DeleteBlockRelation(ctx, session.ForUser.ID, req.UserID)
+	users, err := h.ds.DeleteBlockRelation(ctx, session.ForUser.ID, req.UserID)
 	if err == datastore.ErrNotFound {
 		err = web.ErrNotBlocked
 		return
@@ -104,7 +110,11 @@ func (h *usersHandlers) handleBlockListRemove(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Update multiplayer
+	h.rh.UpdateBlockList(session.ForUser.ID, users)
+
 	// No error, so they should be unblocked now
-	web.SendResOK(w, blocklistRemoveRes{true})
+	blocked := usersToBlockList(users)
+	web.SendResOK(w, blocklistRemoveRes{blocked})
 	return
 }

@@ -1,6 +1,9 @@
 package room
 
 import (
+	"sync"
+
+	"github.com/google/uuid"
 	"github.com/lxzan/gws"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
 )
@@ -10,10 +13,12 @@ type clientData struct {
 	cID  int32
 	name string
 
-	accountUUID string
+	accountUUID uuid.UUID
 	rank        int32
 	loggedIn    bool
 	badge       string
+	blocklist   map[uuid.UUID]struct{}
+	blocklistMu sync.RWMutex
 
 	guardKey, guardCount uint32
 	guardKeyBytes        []byte // so we don't need to recompute

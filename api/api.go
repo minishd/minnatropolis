@@ -55,7 +55,7 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, fil
 
 	// Set routes (users)
 	usersMux := http.NewServeMux()
-	uh := &usersHandlers{ds}
+	uh := &usersHandlers{ds, rh}
 	usersMux.Handle("GET /blocklist", web.RequireAuth(ds, uh.handleBlockList))
 	usersMux.Handle("POST /blocklist", web.RequireAuth(ds, uh.handleBlockListAdd))
 	usersMux.Handle("DELETE /blocklist", web.RequireAuth(ds, uh.handleBlockListRemove))
