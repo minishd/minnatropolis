@@ -25,11 +25,15 @@ var (
 	ErrInvalidCredentials = &Error{400, "invalid credentials"}
 	ErrUsernameTaken      = &Error{400, "username taken"}
 	ErrUsernameInvalid    = &Error{400, "username invalid"}
-	ErrUnauthorized       = &Error{401, "unauthorized"}
-	ErrTooManyRequests    = &Error{429, "too many requests"}
 
-	ErrNotJSON        = &Error{415, "only json accepted"}
-	ErrBodyMalformed  = &Error{400, "request body malformed"}
-	ErrBodyInvalid    = &Error{400, "request body fails validation"}
-	ErrServerInternal = &Error{500, "internal server error"}
+	ErrNoSuchUser     = &Error{404, "no such user"}
+	ErrAlreadyBlocked = &Error{400, "user is already blocked"}
+	ErrNotBlocked     = &Error{400, "user was not blocked"}
+
+	ErrUnauthorized    = &Error{401, "unauthorized"}
+	ErrTooManyRequests = &Error{429, "too many requests"}
+	ErrNotJSON         = &Error{415, "only json accepted"}
+	ErrBodyMalformed   = &Error{400, "request body malformed"}
+	ErrBodyInvalid     = &Error{400, "request body fails validation"}
+	ErrServerInternal  = &Error{500, "internal server error"}
 )

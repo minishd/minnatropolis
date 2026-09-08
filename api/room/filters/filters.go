@@ -75,7 +75,7 @@ type cacheDirs struct {
 
 // Strip a set down to just its keys
 func strip(set map[string]any) map[string]struct{} {
-	out := make(map[string]struct{})
+	out := make(map[string]struct{}, len(set))
 	for name, _ := range set {
 		out[name] = struct{}{}
 	}
@@ -84,7 +84,7 @@ func strip(set map[string]any) map[string]struct{} {
 
 // Turn a slice into a set
 func setify[T comparable](slice []T) map[T]struct{} {
-	out := make(map[T]struct{})
+	out := make(map[T]struct{}, len(slice))
 	for _, name := range slice {
 		out[name] = struct{}{}
 	}
@@ -94,7 +94,7 @@ func setify[T comparable](slice []T) map[T]struct{} {
 // Parse out map IDs from a list of file
 // and folder names
 func getMaps(set map[string]any) map[int32]struct{} {
-	out := make(map[int32]struct{})
+	out := make(map[int32]struct{}) // no pre-alloc, they're not all maps
 	for name, _ := range set {
 		// Try to cut "map" prefix from name (e.g. "map0001.lmu")
 		idAndExt, found := strings.CutPrefix(name, "map")

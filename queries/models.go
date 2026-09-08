@@ -53,6 +53,13 @@ func (ns NullPwHashTypeT) Value() (driver.Value, error) {
 	return string(ns.PwHashTypeT), nil
 }
 
+type BlockRelation struct {
+	ID          uuid.UUID
+	CreatedAt   time.Time
+	OriginUser  uuid.UUID
+	BlockedUser uuid.UUID
+}
+
 type SessionToken struct {
 	ID        uuid.UUID
 	CreatedAt time.Time

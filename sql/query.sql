@@ -11,7 +11,7 @@ WHERE username = $1;
 INSERT INTO session_tokens (for_user, token, expires_at)
 VALUES ($1, $2, $3);
 
--- name: DeleteSessionToken :exec
+-- name: DeleteSessionToken :execrows
 DELETE FROM session_tokens
 WHERE id = $1;
 
@@ -33,6 +33,21 @@ SELECT st.*,
     u.pw_hash_type AS user_pw_hash_type,
     u.pw_hash AS user_pw_hash
 FROM session_tokens st
-JOIN users u ON st.for_user = u.id
+JOIN users u ON u.id = st.for_user
 WHERE token = $1
   AND expires_at > CURRENT_TIMESTAMP;
+
+-- name: InsertBlockRelation :exec
+INSERT INTO block_relations (origin_user, blocked_user)
+VALUES ($1, $2);
+
+-- name: DeleteBlockRelation :execrows
+DELETE FROM block_relations
+WHERE origin_user = $1
+  AND blocked_user = $2;
+
+-- name: GetUserBlockList :many
+SELECT u.*
+FROM block_relations br
+JOIN users u ON u.id = br.blocked_user
+WHERE origin_user = $1;

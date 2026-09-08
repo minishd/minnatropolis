@@ -180,6 +180,9 @@ func (h *Handler) validateMessage(m any) error {
 			return fmt.Errorf("sprite index %d out of range", m.Index)
 		}
 
+	case pt.HiddenC2S:
+		break
+
 	case pt.MainPlayerPosC2S:
 		if !isValidXY(m.X) || !isValidXY(m.Y) {
 			return fmt.Errorf("move position %d,%d out of range", m.X, m.Y)
@@ -245,9 +248,6 @@ func (h *Handler) validateMessage(m any) error {
 		if !isValidPicID(m.PicID) {
 			return fmt.Errorf("erase pic id %d out of range", m.PicID)
 		}
-
-	// Unvalidated
-	case pt.HiddenC2S:
 
 	default:
 		// We should at least add a no-op case

@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 var (
@@ -230,6 +232,10 @@ func serializeFields(msg any) (msgBytes []byte) {
 				digit = '1'
 			}
 			msgBytes = append(msgBytes, byte(digit))
+
+		case uuid.UUID:
+			uuidStr := field.String()
+			msgBytes = append(msgBytes, []byte(uuidStr)...)
 
 		case Picture, BasePicture, Flash:
 			msgBytes = append(msgBytes, serializeFields(field)...)

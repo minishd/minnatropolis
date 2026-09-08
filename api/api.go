@@ -53,6 +53,13 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, fil
 	authMux.Handle("POST /renew", web.RequireAuth(ds, ah.handleRenew))
 	authMux.Handle("GET /whoami", web.RequireAuth(ds, ah.handleWhoami))
 
+	// Set routes (users)
+	usersMux := http.NewServeMux()
+	uh := &usersHandlers{ds, rh}
+	usersMux.Handle("GET /blocklist", web.RequireAuth(ds, uh.handleBlockList))
+	usersMux.Handle("POST /blocklist", web.RequireAuth(ds, uh.handleBlockListAdd))
+	usersMux.Handle("DELETE /blocklist", web.RequireAuth(ds, uh.handleBlockListRemove))
+
 	// Set routes
 	mux.Handle("GET /room", roomLimiter.Check(func(w http.ResponseWriter, r *http.Request) error {
 		socket, err := upgrader.Upgrade(w, r)
@@ -63,6 +70,7 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, fil
 		return nil
 	}))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
+	mux.Handle("/users/", http.StripPrefix("/users", usersMux))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("api unconscious"))
 	})

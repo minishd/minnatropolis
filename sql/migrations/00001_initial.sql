@@ -1,8 +1,5 @@
 --/// initial migration
-
 -- +goose Up
---/// ...
-
 CREATE EXTENSION citext;
 
 --// users
@@ -27,6 +24,7 @@ CREATE TABLE users (
 CREATE INDEX idx_users__username
 ON users (username);
 
+
 --// session tokens
 
 CREATE TABLE session_tokens (
@@ -46,9 +44,23 @@ CREATE INDEX idx_session_tokens__for_user
 ON session_tokens (for_user);
 
 
--- +goose Down
---/// ...
+--// block relations
 
+CREATE TABLE block_relations (
+    id           UUID           PRIMARY KEY DEFAULT uuidv7 (),
+    created_at   TIMESTAMPTZ    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    origin_user  UUID           NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    blocked_user UUID           NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    UNIQUE (origin_user, blocked_user)
+);
+
+-- why: checking who a user has blocked
+CREATE INDEX idx_block_relations__origin_user
+ON block_relations (origin_user);
+
+
+--/// ...
+-- +goose Down
 DROP TABLE session_tokens;
 DROP TABLE users;
 DROP TYPE pw_hash_type_t;
