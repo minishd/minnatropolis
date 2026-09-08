@@ -10,8 +10,11 @@ guardpsk:
 
 filter:
   indexpath: index.json
+  singleplayerrooms:
+    - 3
   battleanimids:
   picturenames:
+    - maple-wakeupsoul
   pictureprefixes:
     - protag_
     - $protag_
