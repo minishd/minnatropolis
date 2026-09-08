@@ -1,11 +1,31 @@
 package room
 
+// Type definitions for room users (players)
+// and associated functions
+
 import (
 	"sync"
 
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
+)
+
+// The values that clients will assume
+// if they aren't specified.
+//
+// Used so our assumptions match theirs
+// and we don't send unnecessary updates.
+const (
+	defaultXY     = -1
+	defaultFacing = 2
+	defaultSpeed  = 3
+
+	defaultTransparency = 0
+	defaultHidden       = false
+	defaultSprite       = ""
+	defaultSpriteIndex  = -1
+	defaultSysName      = ""
 )
 
 // Data associated with a room client
@@ -41,31 +61,11 @@ type clientData struct {
 	activePictures map[int32]pt.Picture
 }
 
-// Wrapper around a [gws.Conn].
-type User gws.Conn
-
-func NewUser(c *gws.Conn) *User { return (*User)(c) }
-
-// Get underlying [gws.Conn].
-func (u *User) Conn() *gws.Conn { return (*gws.Conn)(u) }
-
-const kClientData = "cd"
-
-func (u *User) getData() *clientData {
-	cd, _ := u.Conn().Session().Load(kClientData)
-	return cd.(*clientData)
-}
-
-// Serialize and send a YNO message.
-func (u *User) Send(msgs ...any) {
-	data := pt.Serialize(msgs...)
-	u.Conn().WriteAsync(gws.OpcodeBinary, data, nil)
-}
-
-// Get the packets for our initial state.
-func (u *User) GetIntroMessages() (msgs []any) {
-	d := u.getData()
-
+// Build a list of packets that sets up our initial state.
+// Sent to people when we enter a room, or when other people
+// enter a room we're in, so we look how we are meant to look
+// on their screen and appear at the position we're standing, etc
+func (d *clientData) getIntroMessages() (msgs []any) {
 	msgs = append(msgs, pt.ConnectS2C{
 		ID: d.cID, UUID: d.accountUUID,
 		Rank: d.rank, IsLoggedIn: d.loggedIn,
@@ -104,4 +104,28 @@ func (u *User) GetIntroMessages() (msgs []any) {
 	}
 
 	return
+}
+
+// Wrapper around a [gws.Conn].
+type User gws.Conn
+
+func NewUser(c *gws.Conn) *User { return (*User)(c) }
+
+// Get underlying [gws.Conn].
+func (u *User) Conn() *gws.Conn { return (*gws.Conn)(u) }
+
+// Key that client data is stored under in
+// session storage k/v
+const kClientData = "cd"
+
+// Get [clientData] associated with a connection.
+func (u *User) getData() *clientData {
+	cd, _ := u.Conn().Session().Load(kClientData)
+	return cd.(*clientData)
+}
+
+// Serialize and send a YNO message.
+func (u *User) Send(msgs ...any) {
+	data := pt.Serialize(msgs...)
+	u.Conn().WriteAsync(gws.OpcodeBinary, data, nil)
 }

@@ -1,5 +1,7 @@
 package room
 
+// Event handlers for room websocket
+
 import (
 	"bytes"
 	"crypto/sha1"
@@ -7,7 +9,6 @@ import (
 	"log"
 	"math/rand/v2"
 	"net/http"
-	"slices"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -19,12 +20,8 @@ import (
 	"github.com/minishd/minnatropolis/datastore"
 )
 
-type room struct {
-	sync.RWMutex
-	members []*User
-}
-
 // Shared handler for room websocket events
+// Implements [gws.Event]
 type Handler struct {
 	guardPSK []byte
 
@@ -58,23 +55,6 @@ func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filte
 		users: users,
 	}
 }
-
-// The values that clients will assume
-// if they aren't specified.
-//
-// Used so our assumptions match theirs
-// and we don't send unnecessary updates.
-const (
-	defaultXY     = -1
-	defaultFacing = 2
-	defaultSpeed  = 4
-
-	defaultTransparency = 0
-	defaultHidden       = false
-	defaultSprite       = ""
-	defaultSpriteIndex  = -1
-	defaultSysName      = ""
-)
 
 func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	// Get room ID
@@ -166,204 +146,6 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	return true
 }
 
-func (h *Handler) hasRoom(roomID int32) bool {
-	_, ok := h.rooms[roomID]
-	return ok
-}
-
-func (h *Handler) unsetRoom(m *User) {
-	d := m.getData()
-
-	// Remove them from their room
-	room := h.rooms[d.roomID]
-	room.Lock()
-	room.members = slices.DeleteFunc(room.members, func(rm *User) bool { return rm.getData().cID == d.cID })
-	room.Unlock()
-}
-
-func (h *Handler) setRoom(m *User, roomID int32) {
-	// Remove them from old room
-	h.unsetRoom(m)
-
-	// Put them in new room
-	room := h.rooms[roomID]
-	room.Lock()
-	room.members = append(room.members, m)
-	room.Unlock()
-
-	// Set their room ID
-	m.getData().roomID = roomID
-}
-
-// Update a user's blocklist, showing & hiding players
-// as needed
-func (h *Handler) UpdateBlockList(accountUUID uuid.UUID, blocked []*datastore.User) {
-	// Find the user
-	u, ok := h.users[accountUUID]
-	if !ok {
-		// Seems not online
-		return
-	}
-
-	// Lock blocklist
-	// We don't want another update to come in
-	// as we're dispatching connect/disconnect packets
-	// That could cause invalid states
-	d := u.getData()
-	d.blocklistMu.Lock()
-	defer d.blocklistMu.Unlock()
-
-	// Make new blocklist
-	blocklistNew := make(map[uuid.UUID]struct{}, len(blocked))
-	for _, user := range blocked {
-		blocklistNew[user.ID] = struct{}{}
-	}
-
-	// Lock users
-	h.usersMu.RLock()
-	defer h.usersMu.RUnlock()
-
-	// Handle disconnections
-	for id, _ := range blocklistNew {
-		// Skip if already blocked
-		if _, ok := d.blocklist[id]; ok {
-			continue
-		}
-		// Get user
-		user, ok := h.users[id]
-		if !ok {
-			// Not online
-			continue
-		}
-		// Skip if not in same room
-		data := user.getData()
-		if d.roomID != data.roomID {
-			continue
-		}
-		// Hide players from eachother
-		u.Send(pt.DisconnectS2C{ID: data.cID})
-		user.Send(pt.DisconnectS2C{ID: d.cID})
-	}
-
-	// Handle connections
-	for id, _ := range d.blocklist {
-		// Skip if still blocked
-		if _, ok := blocklistNew[id]; ok {
-			continue
-		}
-		// Get user
-		user, ok := h.users[id]
-		if !ok {
-			// Not here..
-			continue
-		}
-		// Skip if not in same room
-		if d.roomID != user.getData().roomID {
-			continue
-		}
-		// Show them
-		u.Send(user.GetIntroMessages()...)
-		user.Send(u.GetIntroMessages()...)
-	}
-
-	// Set blocklist
-	d.blocklist = blocklistNew
-}
-
-// Whether or not we should skip packets in a room.
-func (h *Handler) arePacketsSkippedMap(us *clientData) bool {
-	return h.filters.IsMapSingleplayer(us.roomID)
-}
-
-// Whether or not we should skip packets about a player.
-func (h *Handler) arePacketsSkippedPlayer(us *clientData, them *clientData) bool {
-	// Is it ourselves? We already know what we sent
-	if us.cID == them.cID {
-		return true
-	}
-
-	// Lock blocklists so we can check safely
-	us.blocklistMu.RLock()
-	them.blocklistMu.RLock()
-	defer us.blocklistMu.RUnlock()
-	defer them.blocklistMu.RUnlock()
-
-	// Did we block them?
-	if _, ok := us.blocklist[them.accountUUID]; ok {
-		// Yes, don't replicate..
-		return true
-	}
-	// Did they block us?
-	if _, ok := them.blocklist[us.accountUUID]; ok {
-		// Yes, also don't replicate
-		return true
-	}
-
-	// Nobody blocked eachother :)
-	return false
-}
-
-// Send a message to everyone else inrack the room.
-func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
-	// Skip if it's a room where we don't
-	// want to network players (singleplayer)
-	if h.arePacketsSkippedMap(d) {
-		return
-	}
-
-	// Serialize and create [gws.Broadcaster]
-	msgBytes := pt.Serialize(msgs...)
-	bc := gws.NewBroadcaster(gws.OpcodeBinary, msgBytes)
-
-	// Send to room members
-	room := h.rooms[d.roomID]
-	room.RLock()
-	for _, m := range room.members {
-		if h.arePacketsSkippedPlayer(d, m.getData()) {
-			continue
-		}
-
-		// Send the message
-		_ = bc.Broadcast(m.Conn(), nil)
-	}
-	room.RUnlock()
-}
-
-// Change from one room to another.
-func (h *Handler) changeRoom(u *User, newID int32) {
-	d := u.getData()
-
-	// If the two rooms are different,
-	// we need to handle leaving the other room
-	if newID != d.roomID {
-		// Tell other players we left
-		h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})
-	}
-
-	// Introduce to new room
-	u.Send(pt.RoomInfoS2C{RoomID: newID})
-	h.setRoom(u, newID)
-
-	// Tell us that everyone is here,
-	// if it is not a singleplayer map
-	if !h.arePacketsSkippedMap(d) {
-		var introMsgs []any
-		room := h.rooms[newID]
-		room.RLock()
-		for _, m := range room.members {
-			if h.arePacketsSkippedPlayer(d, m.getData()) {
-				continue
-			}
-			introMsgs = append(introMsgs, m.GetIntroMessages()...)
-		}
-		u.Send(introMsgs...)
-		room.RUnlock()
-	}
-
-	// Tell everyone else we're here
-	h.shareToRoom(d, u.GetIntroMessages()...)
-}
-
 func (h *Handler) OnOpen(c *gws.Conn) {
 	s := NewUser(c)
 	log.Println("open cID=", s.getData().cID)
@@ -431,119 +213,6 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 
 	// Add to room
 	h.changeRoom(s, d.roomID)
-}
-
-func (h *Handler) removePicture(d *clientData, picID int32) {
-	delete(d.activePictures, picID)
-	h.shareToRoom(d, pt.ErasePictureS2C{ID: d.cID, PicID: picID})
-}
-
-func (h *Handler) updatePicture(d *clientData, pic pt.Picture) {
-	// If it's not a one-shot effect,
-	// we will keep track of it
-	if !pic.SpritesheetPlayOnce {
-		d.activePictures[pic.PicID] = pic
-	}
-}
-
-func (h *Handler) processMessage(u *User, m any) {
-	d := u.getData()
-
-	switch m := m.(type) {
-
-	case pt.SwitchRoomC2S:
-		log.Println("change to room", m.RoomID)
-		h.changeRoom(u, m.RoomID)
-
-	case pt.MainPlayerPosC2S:
-		d.x = m.X
-		d.y = m.Y
-		h.shareToRoom(d, pt.MainPlayerPosS2C{ID: d.cID, X: d.x, Y: d.y})
-	case pt.TeleportC2S:
-		d.x = m.X
-		d.y = m.Y
-		h.shareToRoom(d, pt.MainPlayerPosS2C{ID: d.cID, X: d.x, Y: d.y})
-	case pt.JumpC2S:
-		d.x = m.X
-		d.y = m.Y
-		h.shareToRoom(d, pt.JumpS2C{ID: d.cID, X: d.x, Y: d.y})
-
-	case pt.SpeedC2S:
-		d.speed = m.Speed
-		h.shareToRoom(d, pt.SpeedS2C{ID: d.cID, Speed: d.speed})
-
-	case pt.SpriteC2S:
-		d.sprite = m.Name
-		d.spriteIndex = m.Index
-		h.shareToRoom(d, pt.SpriteS2C{ID: d.cID, Name: d.sprite, Index: d.spriteIndex})
-
-	case pt.FacingC2S:
-		d.facing = m.Direction
-		h.shareToRoom(d, pt.FacingS2C{ID: d.cID, Direction: d.facing})
-
-	case pt.HiddenC2S:
-		d.hidden = m.Hidden
-		h.shareToRoom(d, pt.HiddenS2C{ID: d.cID, Hidden: d.hidden})
-
-	case pt.SysNameC2S:
-		d.sysName = m.Name
-		h.shareToRoom(d, pt.SysNameS2C{ID: d.cID, Name: d.sysName})
-
-	case pt.TransparencyC2S:
-		d.transparency = m.Transparency
-		h.shareToRoom(d, pt.TransparencyS2C{ID: d.cID, Transparency: d.transparency})
-
-	case pt.SoundEffectC2S:
-		h.shareToRoom(d, pt.SoundEffectS2C{ID: d.cID, Name: m.Name, Volume: m.Volume, Tempo: m.Tempo, Balance: m.Balance})
-
-	case pt.FlashC2S:
-		h.shareToRoom(d, pt.FlashS2C{ID: d.cID, Flash: m.Flash})
-	case pt.RepeatingFlashC2S:
-		d.flash = &m.Flash
-		h.shareToRoom(d, pt.RepeatingFlashS2C{ID: d.cID, Flash: m.Flash})
-	case pt.RemoveRepeatingFlashC2S:
-		d.flash = nil
-		h.shareToRoom(d, pt.RemoveRepeatingFlashS2C{ID: d.cID})
-
-	case pt.ShowPlayerBattleAnimC2S:
-		h.shareToRoom(d, pt.ShowPlayerBattleAnimS2C{ID: d.cID, AnimID: m.AnimID})
-
-	case pt.ShowPictureC2S:
-		// If there is already a picture
-		// with that ID, we will remove it
-		_, ok := d.activePictures[m.PicID]
-		if ok {
-			h.removePicture(d, m.PicID)
-		}
-
-		h.updatePicture(d, m.Picture)
-		h.shareToRoom(d, pt.ShowPictureS2C{ID: d.cID, Picture: m.Picture})
-	case pt.MovePictureC2S:
-		pic, ok := d.activePictures[m.PicID]
-		if !ok {
-			// No such picture?
-			// That's invalid but I won't do
-			// anything about it for now
-			return
-		}
-		pic.BasePicture = m.BasePicture
-
-		h.updatePicture(d, pic)
-		h.shareToRoom(d, pt.MovePictureS2C{ID: d.cID, BasePicture: m.BasePicture, Duration: m.Duration})
-
-	case pt.ErasePictureC2S:
-		_, ok := d.activePictures[m.PicID]
-		if !ok {
-			// Also no such picture..
-			return
-		}
-		h.removePicture(d, m.PicID)
-
-	default:
-		// If we registered a message type,
-		// we should also be handling it
-		panic("unhandled message type")
-	}
 }
 
 func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
