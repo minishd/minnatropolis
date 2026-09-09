@@ -36,7 +36,7 @@ func (h *Handler) sendToListDifferences(
 		if usData.roomID != themData.roomID {
 			continue
 		}
-		// Hide players from eachother
+		// Send packets to the two players
 		us.Send(makePackets(themData)...)
 		them.Send(makePackets(usData)...)
 	}
