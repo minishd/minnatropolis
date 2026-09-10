@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/minishd/minnatropolis/datastore"
@@ -16,13 +15,27 @@ var validate *validator.Validate = validator.New(
 	validator.WithTagNameFuncBlankOmit(),
 )
 
-// Reads and looks up a provided session token
-func getAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionToken, err error) {
-	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
+const kSession = "session"
 
-	// Make sure prefix is present
-	token, found := strings.CutPrefix(authorization, "Session ")
-	if !found {
+func SetAuthCookie(w http.ResponseWriter, token string) {
+	cookie := &http.Cookie{Name: kSession, Value: token}
+	http.SetCookie(w, cookie)
+}
+
+// Reads and looks up a provided session token
+func GetAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionToken, err error) {
+	// Read token from cookie
+	cookie, err_ := r.Cookie(kSession)
+	if err_ != nil {
+		// [http.Request.Cookie] only returns an error
+		// if the cookie was not found.
+		// (We do not consider that an error)
+		return
+	}
+	token := cookie.Value
+
+	// Skip if it's obviously not valid
+	if token == "" {
 		return
 	}
 
@@ -39,7 +52,7 @@ func getAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionTok
 // Session handler wrapper for authentication
 func RequireAuth(ds *datastore.DataStore, next sessionHandler) handleError {
 	return func(w http.ResponseWriter, r *http.Request) (err error) {
-		session, err := getAuth(ds, r)
+		session, err := GetAuth(ds, r)
 		if err != nil {
 			return
 		}
