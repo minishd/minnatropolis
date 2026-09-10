@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/minishd/minnatropolis/api/room"
@@ -12,6 +13,21 @@ import (
 type usersHandlers struct {
 	ds *datastore.DataStore
 	rh *room.Handler
+}
+
+func (h *usersHandlers) handleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	type meRes struct {
+		AccountID uuid.UUID
+		Username  string
+		CreatedAt time.Time
+	}
+
+	web.SendResOK(w, meRes{
+		AccountID: session.ForUser.ID,
+		Username:  session.ForUser.Username,
+		CreatedAt: session.ForUser.CreatedAt,
+	})
+	return
 }
 
 type blocklistEntry struct {
