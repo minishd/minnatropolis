@@ -214,8 +214,7 @@ func serializeFields(msg any) (msgBytes []byte) {
 		case uint32, uint64:
 			msgBytes = append(msgBytes, []byte(strconv.FormatUint(fieldValue.Uint(), 10))...)
 
-		// Special case for [5]int32 for now
-		case []int32, []int64, [5]int32:
+		case []int32, []int64:
 			fieldLen := fieldValue.Len()
 			for i := range fieldLen {
 				elem := fieldValue.Index(i).Int()
