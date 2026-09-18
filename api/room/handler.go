@@ -17,6 +17,7 @@ import (
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room/filters"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
+	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
 )
 
@@ -68,9 +69,6 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		return false
 	}
 
-	// Get token
-	token := r.URL.Query().Get("token")
-
 	// Player fields
 	username := "" // set it empty, guests are name-less.
 	accountUUID := uuid.New()
@@ -78,15 +76,11 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	blocklist := make(map[uuid.UUID]struct{})
 
 	// Look up token, if present
-	ctx := r.Context()
-	var st *datastore.SessionToken
-	if token != "" {
-		st, err = h.ds.LookupSessionToken(ctx, token)
-		if err != nil {
-			log.Println("session token lookup failed:", err)
-			// we'll let them through still,
-			// but they will be a guest
-		}
+	st, err := web.GetAuth(h.ds, r)
+	if err != nil {
+		log.Println("session token lookup failed:", err)
+		// we'll let them through still,
+		// but they will be a guest
 	}
 
 	// Get player fields
@@ -96,6 +90,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		loggedIn = true
 
 		// Also look up blocklist
+		ctx := r.Context()
 		users, err := h.ds.GetBlockedUsers(ctx, st.ForUser.ID)
 		if err != nil {
 			log.Println("blocklist lookup failed:", err)
