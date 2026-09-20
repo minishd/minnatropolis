@@ -27,6 +27,12 @@ type authRes struct {
 	Success bool
 }
 
+// Helper for repeated set-cookie, send-OK pattern
+func sendCookieOK(w http.ResponseWriter, token string) {
+	web.SetAuthCookie(w, token)
+	web.SendResOK(w, authRes{true})
+}
+
 // Helper function that generates a session token for a user
 // and returns its string value
 func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID) (token string, err error) {
@@ -43,20 +49,11 @@ func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID)
 	return
 }
 
-// Route that returns the requester's username
-// (Needs authentication)
-func (h *authHandlers) handleWhoami(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
-	type whoamiRes struct {
-		Username string
-	}
-
-	web.SendResOK(w, whoamiRes{session.ForUser.Username})
-	return
-}
-
 // Handles account registration
 func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (err error) {
 	type registerReq struct {
+		// Further validation of username is implemented
+		// as a DB constraint
 		Username string `validate:"required"`
 		Password string `validate:"required,min=8,max=128"`
 	}
@@ -104,7 +101,7 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err error) {
 	type loginReq struct {
 		Username string `validate:"required"`
-		Password string `validate:"required,min=8,max=128"`
+		Password string `validate:"required"`
 	}
 
 	// Parse request
@@ -140,8 +137,7 @@ func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err 
 		return
 	}
 
-	web.SetAuthCookie(w, token)
-	web.SendResOK(w, authRes{true})
+	sendCookieOK(w, token)
 	return
 }
 
@@ -154,8 +150,7 @@ func (h *authHandlers) handleLogout(w http.ResponseWriter, r *http.Request, sess
 		return
 	}
 
-	web.SetAuthCookie(w, "")
-	web.SendResOK(w, authRes{true})
+	sendCookieOK(w, "")
 	return
 }
 
@@ -180,7 +175,7 @@ func (h *authHandlers) handleRenew(w http.ResponseWriter, r *http.Request, sessi
 		return
 	}
 
-	web.SetAuthCookie(w, session.Token)
-	web.SendResOK(w, authRes{true})
+	// set cookie again so it won't expire
+	sendCookieOK(w, session.Token)
 	return
 }

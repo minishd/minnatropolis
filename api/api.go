@@ -51,7 +51,6 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, fil
 	authMux.Handle("POST /logout", web.RequireAuth(ds, ah.handleLogout))
 	authMux.Handle("POST /logout-others", web.RequireAuth(ds, ah.handleLogoutOthers))
 	authMux.Handle("POST /renew", web.RequireAuth(ds, ah.handleRenew))
-	authMux.Handle("GET /whoami", web.RequireAuth(ds, ah.handleWhoami))
 
 	// Set routes (users)
 	usersMux := http.NewServeMux()

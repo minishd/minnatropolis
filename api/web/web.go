@@ -18,7 +18,25 @@ var validate *validator.Validate = validator.New(
 const kSession = "session"
 
 func SetAuthCookie(w http.ResponseWriter, token string) {
-	cookie := &http.Cookie{Name: kSession, Value: token}
+	var maxAge int
+	if token != "" {
+		maxAge = 3600 * 24 * 7
+	} else {
+		// we are clearing the cookie,
+		// so set max age to 0 as well
+		maxAge = 0
+	}
+
+	cookie := &http.Cookie{
+		Name:        kSession,
+		Value:       token,
+		MaxAge:      maxAge,
+		SameSite:    http.SameSiteStrictMode,
+		HttpOnly:    true,
+		Secure:      true,
+		Partitioned: true,
+		Path:        "/",
+	}
 	http.SetCookie(w, cookie)
 }
 
