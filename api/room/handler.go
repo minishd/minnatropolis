@@ -113,10 +113,16 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	guardKeyBytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(guardKeyBytes, guardKey)
 
+	// Make outbox
+	// [User.sendLoop] has its own buffer,
+	// we don't allocate one here..
+	outbox := make(chan []any)
+
 	// Set up data
 	session.Store(kClientData, &clientData{
 		cID:           h.cIDCounter.Add(1),
 		name:          username,
+		outbox:        outbox,
 		accountUUID:   accountUUID,
 		loggedIn:      loggedIn,
 		blocklist:     blocklist,
@@ -163,6 +169,7 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	}
 
 	// Seems ok so add them
+	go s.sendLoop()
 	h.users[d.accountUUID] = s
 	h.usersMu.Unlock()
 
@@ -203,8 +210,8 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 		})
 	}
 
-	// Send initial packet..
-	s.Send(initial...)
+	// Send initial packet immediately..
+	s.SendImmediate(initial...)
 
 	// Add to room
 	h.changeRoom(s, d.roomID)
@@ -275,6 +282,9 @@ func (h *Handler) OnClose(c *gws.Conn, err error) {
 	h.usersMu.Lock()
 	delete(h.users, d.accountUUID)
 	h.usersMu.Unlock()
+
+	// Close message loop
+	close(d.outbox)
 
 	// Leave room
 	h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})

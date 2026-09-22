@@ -4,7 +4,6 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/lxzan/gws"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
 )
 
@@ -99,10 +98,6 @@ func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
 		return
 	}
 
-	// Serialize and create [gws.Broadcaster]
-	msgBytes := pt.Serialize(msgs...)
-	bc := gws.NewBroadcaster(gws.OpcodeBinary, msgBytes)
-
 	// Send to room members
 	room := h.rooms[d.roomID]
 	room.RLock()
@@ -111,8 +106,8 @@ func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
 			continue
 		}
 
-		// Send the message
-		_ = bc.Broadcast(m.Conn(), nil)
+		// Add to message queue
+		m.Send(msgs...)
 	}
 	room.RUnlock()
 }
@@ -133,7 +128,8 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 	}
 
 	// Introduce to new room
-	u.Send(pt.RoomInfoS2C{RoomID: newID})
+	// (it should be ok to send immediately here?)
+	u.SendImmediate(pt.RoomInfoS2C{RoomID: newID})
 	h.setRoom(u, newID)
 
 	// Tell us that everyone is here,

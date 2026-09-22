@@ -4,11 +4,33 @@ package room
 // and associated functions
 
 import (
+	"slices"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
+)
+
+const (
+	// Maximum amount of time we will wait
+	// for new outbound messages to be queued
+	// before flushing and sending all.
+	// This should be the maximum amount of time
+	// we can wait between broadcasts without
+	// something bad happening (players rubber-banding, etc)
+	sendMaxInterval = time.Second / 10
+
+	// The amount of time we will wait for another
+	// message to get queued after one is received.
+	// We want it to be low (so that observable latency is low),
+	// but we also want it to be high enough that the
+	// likelihood of catching more queued messages is high.
+	// This lets scenarios of low player-count lobbies
+	// stay snappy, while larger lobbies can queue up more
+	// messages into one packet (keeping packet rate low).
+	sendDelay = time.Second / 20
 )
 
 // The values that clients will assume
@@ -32,6 +54,8 @@ const (
 type clientData struct {
 	cID  int32
 	name string
+
+	outbox chan []any
 
 	accountUUID uuid.UUID
 	rank        int32
@@ -124,8 +148,61 @@ func (u *User) getData() *clientData {
 	return cd.(*clientData)
 }
 
+// The message loop of a user.
+// Does its best to gather many outbound messages
+// into a smaller amount of large messages, which it sends.
+func (u *User) sendLoop() {
+	d := u.getData()
+
+	var pending []any         // re-used buffer of pending messages
+	var endMax time.Time      // the latest time current batch could end
+	var endC <-chan time.Time // channel that signals end of batch
+
+	for {
+		select {
+		case msgs, ok := <-d.outbox:
+			// did channel close? that means user was disconnected
+			if !ok {
+				return
+			}
+
+			// are we in a batch?
+			if endC == nil {
+				// no, but we just got a packet so now we are.
+				// handle start-of-batch things like picking
+				// the latest time this new batch can end.
+				endMax = time.Now().Add(sendMaxInterval)
+			}
+
+			// set end-channel to new end time,
+			// if there's enough time left in this batch
+			timeLeft := time.Until(endMax)
+			if timeLeft >= sendDelay {
+				endC = time.After(sendDelay)
+			}
+
+			// add to buffer
+			pending = slices.Concat(pending, msgs)
+
+		case <-endC:
+			// Serialize and send
+			u.SendImmediate(pending...)
+
+			// clear slice, and end batch
+			pending = pending[:0]
+			endC = nil
+
+		}
+	}
+}
+
 // Serialize and send a YNO message.
-func (u *User) Send(msgs ...any) {
+func (u *User) SendImmediate(msgs ...any) {
 	data := pt.Serialize(msgs...)
 	u.Conn().WriteAsync(gws.OpcodeBinary, data, nil)
+}
+
+// Queue a YNO message to be sent.
+func (u *User) Send(msgs ...any) {
+	u.getData().outbox <- msgs
 }
