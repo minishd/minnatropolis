@@ -83,3 +83,32 @@ func (h *Handler) UpdateBlockList(accountUUID uuid.UUID, blocked []*datastore.Us
 	// Set blocklist
 	d.blocklist = blocklistNew
 }
+
+// Get the account IDs of everyone in the same room
+// as a user, including them. Used for map chat
+func (h *Handler) GetRoommates(accountUUID uuid.UUID) (roommates map[uuid.UUID]struct{}, ok bool) {
+	// Find the user
+	h.usersMu.RLock()
+	us, ok := h.users[accountUUID]
+	h.usersMu.RUnlock()
+	if !ok {
+		// Seems not in-game
+		return
+	}
+
+	d := us.getData()
+	roommates = map[uuid.UUID]struct{}{d.accountUUID: {}}
+	if h.arePacketsSkippedMap(d) {
+		// Singleplayer map, so just them
+		return
+	}
+
+	room := h.rooms[d.roomID]
+	room.RLock()
+	for _, m := range room.members {
+		roommates[m.getData().accountUUID] = struct{}{}
+	}
+	room.RUnlock()
+
+	return
+}
