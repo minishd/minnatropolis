@@ -2,13 +2,17 @@ package protocol
 
 import (
 	"errors"
+	"log"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
-func deserializeSlice(typ reflect.Type, parts []string) (s any, consumed int, err error) {
-	val := reflect.Indirect(reflect.New(typ))
+func deserializeSlice(typ reflect.Type, parts []string) (val reflect.Value, consumed int, err error) {
+	val = reflect.Indirect(reflect.New(typ))
+	typElem := typ.Elem()
 	nParts := len(parts)
 
 	for {
@@ -20,39 +24,38 @@ func deserializeSlice(typ reflect.Type, parts []string) (s any, consumed int, er
 			break
 		}
 
-		eS, eConsumed, eErr := deserializeAny(typ, parts[consumed:])
+		// Deserialize slice element, then add the number of
+		// parts it consumed to our total
+		eS, eConsumed, eErr := deserializeAny(typElem, parts[consumed:])
 		if err = eErr; err != nil {
 			// We don't care about consumed, no deserializer
 			// will continue parsing if it sees an error
 			return
 		}
-		val.Index(consumed).Set(reflect.ValueOf(eS))
 		consumed += eConsumed
-		// ^ Can never exceed nParts, no deserializer
-		// will consume more parts than are available to us
+		// Append to slice
+		val = reflect.Append(val, eS)
 	}
 
-	s = val.Interface()
 	return
 }
 
-func deserializeStruct(typ reflect.Type, parts []string) (s any, consumed int, err error) {
-	val := reflect.Indirect(reflect.New(typ))
+func deserializeStruct(typ reflect.Type, parts []string) (val reflect.Value, consumed int, err error) {
+	val = reflect.Indirect(reflect.New(typ))
 
 	for f, fVal := range val.Fields() {
 		fS, fConsumed, fErr := deserializeAny(f.Type, parts[consumed:])
 		if err = fErr; err != nil {
 			return
 		}
-		fVal.Set(reflect.ValueOf(fS))
+		fVal.Set(fS)
 		consumed += fConsumed
 	}
 
-	s = val.Interface()
 	return
 }
 
-func deserializeAny(typ reflect.Type, parts []string) (s any, consumed int, err error) {
+func deserializeAny(typ reflect.Type, parts []string) (val reflect.Value, consumed int, err error) {
 	// Handle types containing other types
 	switch typ.Kind() {
 	case reflect.Struct:
@@ -61,20 +64,27 @@ func deserializeAny(typ reflect.Type, parts []string) (s any, consumed int, err 
 		return deserializeSlice(typ, parts)
 	}
 
-	val := reflect.Indirect(reflect.New(typ))
+	val = reflect.Indirect(reflect.New(typ))
 	part := parts[0]
 
 	switch val.Interface().(type) {
 	// [string]s don't need any change
 	case string:
 		val.SetString(part)
-	// [int32]/[int64] need to get parsed from string
-	case int32, int64:
+	// [int32]/[int64] and similar need to get parsed from string
+	case int32, int64, PictureListType:
 		n, dErr := strconv.ParseInt(part, 10, typ.Bits())
 		if err = dErr; err != nil {
 			return
 		}
 		val.SetInt(n)
+	// [uint32]/[uint64] need to get parsed from string
+	case uint32, uint64:
+		n, dErr := strconv.ParseUint(part, 10, typ.Bits())
+		if err = dErr; err != nil {
+			return
+		}
+		val.SetUint(n)
 
 	// [bool]s are represented by a "0" or a "1" character
 	case bool:
@@ -91,15 +101,26 @@ func deserializeAny(typ reflect.Type, parts []string) (s any, consumed int, err 
 		}
 		val.SetBool(b)
 
+	// [uuid.UUID] must be parsed from string
+	case uuid.UUID:
+		uuid, dErr := uuid.Parse(part)
+		if err = dErr; err != nil {
+			return
+		}
+		val.Set(reflect.ValueOf(uuid))
+
 	case int, uint, uintptr:
 		// Only allow ints of specified bitness
 		panic("deserialize int of unspecified size")
 	default:
+		log.Println(typ.String())
 		panic("deserialize unhandled type")
 	}
 
+	// Primitive protocol types consume one part,
+	// so add that to our total
 	consumed++
-	s = val.Interface()
+
 	return
 }
 
@@ -125,11 +146,11 @@ func deserializeOne(msgBytes []byte) (msg any, err error) {
 
 	// Deserialize packet
 	partsNameless := parts[1:]
-	var consumed int
-	msg, consumed, err = deserializeAny(typ, partsNameless)
-	if err != nil {
+	val, consumed, dErr := deserializeAny(typ, partsNameless)
+	if err = dErr; err != nil {
 		return
 	}
+	msg = val.Interface()
 
 	// Check if too many fields were sent
 	nPartsNameless := len(partsNameless)
