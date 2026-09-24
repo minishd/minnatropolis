@@ -277,6 +277,9 @@ func (h *Handler) OnClose(c *gws.Conn, err error) {
 	s := NewUser(c)
 	log.Println("close cID=", s.getData().cID)
 
+	// Remove all subscriptions
+	h.unsetRoom(s)
+
 	// Remove from user registry
 	d := s.getData()
 	h.usersMu.Lock()
@@ -284,13 +287,12 @@ func (h *Handler) OnClose(c *gws.Conn, err error) {
 	h.usersMu.Unlock()
 
 	// Close message loop
+	// It's important to do this after de-registering
+	// the user so that nothing sends to a closed channel
 	close(d.outbox)
 
 	// Leave room
 	h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})
-
-	// Remove all subscriptions
-	h.unsetRoom(s)
 }
 
 func (h *Handler) OnPing(c *gws.Conn, payload []byte) {
