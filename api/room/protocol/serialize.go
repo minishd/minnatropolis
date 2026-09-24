@@ -72,7 +72,7 @@ func serializeAny(val reflect.Value) (msgBytes []byte) {
 	case int, uint, uintptr:
 		// We want sizes to be specified
 		// (More workable for the future)
-		panic("outbound message uses int of unspecified size")
+		panic("serialize int of unspecified size")
 
 	default:
 		switch val.Kind() {
@@ -81,7 +81,7 @@ func serializeAny(val reflect.Value) (msgBytes []byte) {
 		case reflect.Slice:
 			return serializeSlice(val)
 		default:
-			panic("outbound message contains unhandled type")
+			panic("serialize unhandled type")
 		}
 	}
 
