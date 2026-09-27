@@ -129,6 +129,10 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 
 	// Introduce to new room
 	// (it should be ok to send immediately here?)
+	roomMsgs := []any{pt.RoomInfoS2C{RoomID: newID}}
+	if h.unconscious {
+		roomMsgs = append(roomMsgs, getPacketCounEvent())
+	}
 	u.SendImmediate(pt.RoomInfoS2C{RoomID: newID})
 	h.setRoom(u, newID)
 

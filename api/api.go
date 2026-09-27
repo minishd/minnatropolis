@@ -27,9 +27,9 @@ const (
 	chatMaxMessageSize = 4 * 1024
 )
 
-func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, filters *filters.Filters) {
+func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, filters *filters.Filters, unconscious bool) {
 	// Set up upgrader
-	rh := room.NewHandler(ds, guardPSK, filters)
+	rh := room.NewHandler(ds, guardPSK, filters, unconscious)
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
 		// Don't process each connection's messages in parallel
 		// If we do, the guard message counter check will start

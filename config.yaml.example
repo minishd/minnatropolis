@@ -8,6 +8,7 @@ dbconnect: postgres://admin:admin@localhost/minnatropolis
 listenon: 127.0.0.1:8080
 guardpsk:
 
+unconscious: true
 filter:
   indexpath: index.json
   singleplayerrooms:

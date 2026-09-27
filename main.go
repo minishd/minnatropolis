@@ -38,6 +38,8 @@ type configFile struct {
 		PicturePrefixes   []string
 		BattleAnimIDs     []int32
 	}
+
+	Unconscious bool
 }
 
 func run(rootCtx context.Context) error {
@@ -109,7 +111,7 @@ func run(rootCtx context.Context) error {
 
 	// Set up API
 	mux := http.NewServeMux()
-	api.AddRoutes(mux, guardPSK, ds, filters)
+	api.AddRoutes(mux, guardPSK, ds, filters, cfg.Unconscious)
 
 	// Set up server
 	server := &http.Server{
