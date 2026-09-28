@@ -19,6 +19,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/minishd/minnatropolis/api"
 	"github.com/minishd/minnatropolis/api/room/filters"
+	"github.com/minishd/minnatropolis/api/room/unconscious"
 	"github.com/minishd/minnatropolis/datastore"
 	"github.com/pressly/goose/v3"
 )
@@ -109,9 +110,15 @@ func run(rootCtx context.Context) error {
 	// Set up DB wrapper
 	ds := datastore.New(pool)
 
+	// Set up Collective Unconscious state
+	var coun *unconscious.Unconscious
+	if cfg.Unconscious {
+		coun = unconscious.New()
+	}
+
 	// Set up API
 	mux := http.NewServeMux()
-	api.AddRoutes(mux, guardPSK, ds, filters, cfg.Unconscious)
+	api.AddRoutes(mux, guardPSK, ds, filters, coun)
 
 	// Set up server
 	server := &http.Server{

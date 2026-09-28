@@ -17,6 +17,7 @@ import (
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/room/filters"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
+	"github.com/minishd/minnatropolis/api/room/unconscious"
 	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
 )
@@ -26,9 +27,9 @@ import (
 type Handler struct {
 	guardPSK []byte
 
-	ds          *datastore.DataStore
-	filters     *filters.Filters
-	unconscious bool
+	ds      *datastore.DataStore
+	filters *filters.Filters
+	coun    *unconscious.Unconscious
 
 	rooms   map[int32]*room
 	users   map[uuid.UUID]*User
@@ -39,7 +40,10 @@ type Handler struct {
 	cIDCounter atomic.Int32
 }
 
-func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filters, unconscious bool) *Handler {
+func NewHandler(
+	ds *datastore.DataStore, guardPSK []byte,
+	filters *filters.Filters, coun *unconscious.Unconscious,
+) *Handler {
 	rooms := make(map[int32]*room)
 	for roomID := range filters.GetMaps() {
 		rooms[roomID] = &room{}
@@ -50,13 +54,23 @@ func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filte
 	return &Handler{
 		guardPSK: guardPSK,
 
-		ds:          ds,
-		filters:     filters,
-		unconscious: unconscious,
+		ds:      ds,
+		filters: filters,
+		coun:    coun,
 
 		rooms: rooms,
 		users: users,
 	}
+}
+
+func (h *Handler) Background() {
+	if h.coun == nil {
+		// We don't need to do anything
+		// for games that aren't Collective Unconscious
+		return
+	}
+
+	// ...
 }
 
 func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
@@ -212,6 +226,13 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 		initial = append(initial, pt.BattleAnimSyncListS2C{
 			IDs: battleAnimIDs,
 		})
+	}
+
+	// If game is Collective Unconscious,
+	// we also want to set the time and weather.
+	if h.coun != nil {
+		initial = append(initial, h.coun.GetTimePacket())
+		initial = append(initial, h.coun.GetWeatherPacket())
 	}
 
 	// Send initial packet immediately..

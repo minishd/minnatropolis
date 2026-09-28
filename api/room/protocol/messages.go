@@ -190,13 +190,13 @@ type SyncServerVariableS2C struct {
 }
 
 type CUTimeS2C struct {
-	Time    int
-	RandInt int
+	Time    int32
+	RandInt int32
 }
 
 type CUWeatherS2C struct {
-	Temperature   int
-	Precipitation int
+	Temperature   int32
+	Precipitation int32
 }
 
 // ********** Client -> Server **********

@@ -130,8 +130,10 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 	// Introduce to new room
 	// (it should be ok to send immediately here?)
 	roomMsgs := []any{pt.RoomInfoS2C{RoomID: newID}}
-	if h.unconscious {
-		roomMsgs = append(roomMsgs, getPacketCounEvent())
+	if h.coun != nil {
+		// If game is Collective Unconscious,
+		// also set the current event variable.
+		roomMsgs = append(roomMsgs, h.coun.GetEventPacket())
 	}
 	u.SendImmediate(roomMsgs...)
 	h.setRoom(u, newID)
