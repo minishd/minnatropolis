@@ -133,7 +133,7 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 	if h.unconscious {
 		roomMsgs = append(roomMsgs, getPacketCounEvent())
 	}
-	u.SendImmediate(pt.RoomInfoS2C{RoomID: newID})
+	u.SendImmediate(roomMsgs...)
 	h.setRoom(u, newID)
 
 	// Tell us that everyone is here,
