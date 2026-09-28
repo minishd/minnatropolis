@@ -39,7 +39,7 @@ type Handler struct {
 	cIDCounter atomic.Int32
 }
 
-func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filters, unconsious bool) *Handler {
+func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filters, unconscious bool) *Handler {
 	rooms := make(map[int32]*room)
 	for roomID := range filters.GetMaps() {
 		rooms[roomID] = &room{}
@@ -52,7 +52,7 @@ func NewHandler(ds *datastore.DataStore, guardPSK []byte, filters *filters.Filte
 
 		ds:          ds,
 		filters:     filters,
-		unconscious: unconsious,
+		unconscious: unconscious,
 
 		rooms: rooms,
 		users: users,
