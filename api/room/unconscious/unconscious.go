@@ -24,13 +24,13 @@ type Unconscious struct {
 
 func New() *Unconscious {
 	cu := &Unconscious{}
-	cu.onTimeTick()
-	cu.onWeatherTick()
+	cu.OnTimeTick()
+	cu.OnWeatherTick()
 	return cu
 }
 
 // Called on the start of every 2nd real-world minute.
-func (cu *Unconscious) onWeatherTick() {
+func (cu *Unconscious) OnWeatherTick() {
 	tempDelta := weatherDelta(cu.temp)
 	precipDelta := weatherDelta(cu.precip)
 
@@ -39,7 +39,7 @@ func (cu *Unconscious) onWeatherTick() {
 }
 
 // Called on the start of every real-world minute.
-func (cu *Unconscious) onTimeTick() {
+func (cu *Unconscious) OnTimeTick() {
 	cu.randInt = rand.Int32N(256)
 }
 

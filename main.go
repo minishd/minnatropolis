@@ -18,6 +18,8 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/joho/godotenv"
 	"github.com/minishd/minnatropolis/api"
+	"github.com/minishd/minnatropolis/api/chat"
+	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/room/filters"
 	"github.com/minishd/minnatropolis/api/room/unconscious"
 	"github.com/minishd/minnatropolis/datastore"
@@ -118,7 +120,9 @@ func run(rootCtx context.Context) error {
 
 	// Set up API
 	mux := http.NewServeMux()
-	api.AddRoutes(mux, guardPSK, ds, filters, coun)
+	rh := room.NewHandler(ds, guardPSK, filters, coun)
+	ch := chat.NewHandler(ds, rh)
+	api.AddRoutes(mux, rh, ch, guardPSK, ds, filters, coun)
 
 	// Set up server
 	server := &http.Server{
@@ -138,6 +142,9 @@ func run(rootCtx context.Context) error {
 			return
 		}
 	})
+
+	// Start room handler background
+	wg.Go(func() { rh.Background(ctx) })
 
 	// Start server
 	log.Println("starting")

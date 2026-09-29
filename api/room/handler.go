@@ -63,16 +63,6 @@ func NewHandler(
 	}
 }
 
-func (h *Handler) Background() {
-	if h.coun == nil {
-		// We don't need to do anything
-		// for games that aren't Collective Unconscious
-		return
-	}
-
-	// ...
-}
-
 func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	// Get room ID
 	roomID_, err := strconv.Atoi(r.URL.Query().Get("id"))

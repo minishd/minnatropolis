@@ -29,11 +29,11 @@ const (
 )
 
 func AddRoutes(
-	mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore,
+	mux *http.ServeMux, rh *room.Handler, ch *chat.Handler,
+	guardPSK []byte, ds *datastore.DataStore,
 	filters *filters.Filters, coun *unconscious.Unconscious,
 ) {
 	// Set up upgrader
-	rh := room.NewHandler(ds, guardPSK, filters, coun)
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
 		// Don't process each connection's messages in parallel
 		// If we do, the guard message counter check will start
@@ -47,7 +47,6 @@ func AddRoutes(
 	})
 
 	// Set up chat upgrader
-	ch := chat.NewHandler(ds, rh)
 	chatUpgrader := gws.NewUpgrader(ch, &gws.ServerOption{
 		ParallelEnabled:    false,
 		Recovery:           gws.Recovery,
