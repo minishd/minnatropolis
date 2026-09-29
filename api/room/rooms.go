@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
+	"github.com/minishd/minnatropolis/api/room/user"
 )
 
 // A pub/sub room.
@@ -13,7 +14,7 @@ import (
 // so we can send packets to them as needed
 type room struct {
 	sync.RWMutex
-	members []*User
+	members []*user.User
 }
 
 // Whether or not a room exists.
@@ -33,13 +34,15 @@ func (h *Handler) hasRoom(roomID int32) bool {
 // players, it just makes it so that they don't
 // receive any more game events from their current
 // room.
-func (h *Handler) unsetRoom(m *User) {
-	d := m.getData()
+func (h *Handler) unsetRoom(m *user.User) {
+	d := m.Data()
 
 	// Remove them from their room
-	room := h.rooms[d.roomID]
+	room := h.rooms[d.RoomID]
 	room.Lock()
-	room.members = slices.DeleteFunc(room.members, func(rm *User) bool { return rm.getData().cID == d.cID })
+	room.members = slices.DeleteFunc(room.members, func(rm *user.User) bool {
+		return rm.Data().CID == d.CID
+	})
 	room.Unlock()
 }
 
@@ -49,7 +52,7 @@ func (h *Handler) unsetRoom(m *User) {
 // Like [Handler.unsetRoom] it doesn't send any packets
 // to other players, it just decides what map a player
 // will receive packets for
-func (h *Handler) setRoom(m *User, roomID int32) {
+func (h *Handler) setRoom(m *user.User, roomID int32) {
 	// Remove them from old room
 	h.unsetRoom(m)
 
@@ -60,38 +63,38 @@ func (h *Handler) setRoom(m *User, roomID int32) {
 	room.Unlock()
 
 	// Set their room ID
-	m.getData().roomID = roomID
+	m.Data().RoomID = roomID
 }
 
 // Whether or not we should skip packets in a room.
-func (h *Handler) arePacketsSkippedMap(us *clientData) bool {
-	return h.filters.IsMapSingleplayer(us.roomID)
+func (h *Handler) arePacketsSkippedMap(us *user.ClientData) bool {
+	return h.filters.IsMapSingleplayer(us.RoomID)
 }
 
-func hasBlocked(source *clientData, subject *clientData) (ok bool) {
-	_, ok = source.blocklist[subject.accountUUID]
+func hasBlocked(source *user.ClientData, subject *user.ClientData) (ok bool) {
+	_, ok = source.Blocklist[subject.AccountUUID]
 	return
 }
 
 // Whether or not we should skip packets about a player.
-func (h *Handler) arePacketsSkippedPlayer(us *clientData, them *clientData) bool {
+func (h *Handler) arePacketsSkippedPlayer(us *user.ClientData, them *user.ClientData) bool {
 	// Is it ourselves? We already know what we sent
-	if us.cID == them.cID {
+	if us.CID == them.CID {
 		return true
 	}
 
 	// Lock blocklists so we can check safely
-	us.blocklistMu.RLock()
-	them.blocklistMu.RLock()
-	defer us.blocklistMu.RUnlock()
-	defer them.blocklistMu.RUnlock()
+	us.BlocklistMu.RLock()
+	them.BlocklistMu.RLock()
+	defer us.BlocklistMu.RUnlock()
+	defer them.BlocklistMu.RUnlock()
 
 	// Did we block them, or they block us?
 	return hasBlocked(us, them) || hasBlocked(them, us)
 }
 
 // Send a message to everyone else in the room.
-func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
+func (h *Handler) shareToRoom(d *user.ClientData, msgs ...any) {
 	// Skip if it's a room where we don't
 	// want to network players (singleplayer)
 	if h.arePacketsSkippedMap(d) {
@@ -99,10 +102,10 @@ func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
 	}
 
 	// Send to room members
-	room := h.rooms[d.roomID]
+	room := h.rooms[d.RoomID]
 	room.RLock()
 	for _, m := range room.members {
-		if h.arePacketsSkippedPlayer(d, m.getData()) {
+		if h.arePacketsSkippedPlayer(d, m.Data()) {
 			continue
 		}
 
@@ -117,14 +120,14 @@ func (h *Handler) shareToRoom(d *clientData, msgs ...any) {
 // the map they were in previously and showing
 // them in the new map, so it is appropriate
 // for actual game map transitions
-func (h *Handler) changeRoom(u *User, newID int32) {
-	d := u.getData()
+func (h *Handler) changeRoom(u *user.User, newID int32) {
+	d := u.Data()
 
 	// If the two rooms are different,
 	// we need to handle leaving the other room
-	if newID != d.roomID {
+	if newID != d.RoomID {
 		// Tell other players we left
-		h.shareToRoom(d, pt.DisconnectS2C{ID: d.cID})
+		h.shareToRoom(d, pt.DisconnectS2C{ID: d.CID})
 	}
 
 	// Introduce to new room
@@ -145,16 +148,16 @@ func (h *Handler) changeRoom(u *User, newID int32) {
 		room := h.rooms[newID]
 		room.RLock()
 		for _, m := range room.members {
-			md := m.getData()
+			md := m.Data()
 			if h.arePacketsSkippedPlayer(d, md) {
 				continue
 			}
-			introMsgs = append(introMsgs, md.getIntroMessages()...)
+			introMsgs = append(introMsgs, md.GetIntroMessages()...)
 		}
 		u.Send(introMsgs...)
 		room.RUnlock()
 	}
 
 	// Tell everyone else we're here
-	h.shareToRoom(d, d.getIntroMessages()...)
+	h.shareToRoom(d, d.GetIntroMessages()...)
 }
