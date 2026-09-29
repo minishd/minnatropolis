@@ -103,10 +103,11 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 
 	// Don't allow the same user to connect twice
 	h.usersMu.RLock()
-	if _, ok := h.users[accountUUID]; ok {
+	_, connected := h.users[accountUUID]
+	h.usersMu.RUnlock()
+	if connected {
 		return false
 	}
-	h.usersMu.RUnlock()
 
 	// Make guard key
 	guardKey := rand.Uint32()
@@ -163,6 +164,7 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	// and now..
 	if _, ok := h.users[d.accountUUID]; ok {
 		// They did, so close this connection
+		h.usersMu.Unlock()
 		log.Println("early close cID=", s.getData().cID)
 		s.Conn().WriteClose(1000, nil)
 		return
@@ -281,9 +283,12 @@ func (h *Handler) OnClose(c *gws.Conn, err error) {
 	h.unsetRoom(s)
 
 	// Remove from user registry
+	// Only if it's this connection because early closed ones were never added
 	d := s.getData()
 	h.usersMu.Lock()
-	delete(h.users, d.accountUUID)
+	if h.users[d.accountUUID] == s {
+		delete(h.users, d.accountUUID)
+	}
 	h.usersMu.Unlock()
 
 	// Close message loop

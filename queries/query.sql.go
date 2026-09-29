@@ -28,6 +28,19 @@ func (q *Queries) ClearOtherSessionTokensForUser(ctx context.Context, arg ClearO
 	return err
 }
 
+const createParty = `-- name: CreateParty :one
+INSERT INTO parties (name)
+VALUES ($1)
+RETURNING id, created_at, name
+`
+
+func (q *Queries) CreateParty(ctx context.Context, name string) (Party, error) {
+	row := q.db.QueryRow(ctx, createParty, name)
+	var i Party
+	err := row.Scan(&i.ID, &i.CreatedAt, &i.Name)
+	return i, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (username, pw_hash_type, pw_hash)
 VALUES ($1, $2, $3)
@@ -72,6 +85,33 @@ func (q *Queries) DeleteBlockRelation(ctx context.Context, arg DeleteBlockRelati
 	return result.RowsAffected(), nil
 }
 
+const deletePartyIfEmpty = `-- name: DeletePartyIfEmpty :exec
+DELETE FROM parties p
+WHERE p.id = $1
+  AND NOT EXISTS (
+    SELECT 1 FROM party_members pm
+    WHERE pm.party = p.id
+  )
+`
+
+func (q *Queries) DeletePartyIfEmpty(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deletePartyIfEmpty, id)
+	return err
+}
+
+const deletePartyMember = `-- name: DeletePartyMember :one
+DELETE FROM party_members
+WHERE member_user = $1
+RETURNING party
+`
+
+func (q *Queries) DeletePartyMember(ctx context.Context, memberUser uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, deletePartyMember, memberUser)
+	var party uuid.UUID
+	err := row.Scan(&party)
+	return party, err
+}
+
 const deleteSessionToken = `-- name: DeleteSessionToken :execrows
 DELETE FROM session_tokens
 WHERE id = $1
@@ -83,6 +123,40 @@ func (q *Queries) DeleteSessionToken(ctx context.Context, id uuid.UUID) (int64, 
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getPartyMembers = `-- name: GetPartyMembers :many
+SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash
+FROM party_members pm
+JOIN users u ON u.id = pm.member_user
+WHERE party = $1
+ORDER BY pm.created_at
+`
+
+func (q *Queries) GetPartyMembers(ctx context.Context, party uuid.UUID) ([]User, error) {
+	rows, err := q.db.Query(ctx, getPartyMembers, party)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.Username,
+			&i.PwHashType,
+			&i.PwHash,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getUserBlockList = `-- name: GetUserBlockList :many
@@ -136,6 +210,20 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User,
 	return i, err
 }
 
+const getUserParty = `-- name: GetUserParty :one
+SELECT p.id, p.created_at, p.name
+FROM party_members pm
+JOIN parties p ON p.id = pm.party
+WHERE member_user = $1
+`
+
+func (q *Queries) GetUserParty(ctx context.Context, memberUser uuid.UUID) (Party, error) {
+	row := q.db.QueryRow(ctx, getUserParty, memberUser)
+	var i Party
+	err := row.Scan(&i.ID, &i.CreatedAt, &i.Name)
+	return i, err
+}
+
 const insertBlockRelation = `-- name: InsertBlockRelation :exec
 INSERT INTO block_relations (origin_user, blocked_user)
 VALUES ($1, $2)
@@ -148,6 +236,21 @@ type InsertBlockRelationParams struct {
 
 func (q *Queries) InsertBlockRelation(ctx context.Context, arg InsertBlockRelationParams) error {
 	_, err := q.db.Exec(ctx, insertBlockRelation, arg.OriginUser, arg.BlockedUser)
+	return err
+}
+
+const insertPartyMember = `-- name: InsertPartyMember :exec
+INSERT INTO party_members (party, member_user)
+VALUES ($1, $2)
+`
+
+type InsertPartyMemberParams struct {
+	Party      uuid.UUID
+	MemberUser uuid.UUID
+}
+
+func (q *Queries) InsertPartyMember(ctx context.Context, arg InsertPartyMemberParams) error {
+	_, err := q.db.Exec(ctx, insertPartyMember, arg.Party, arg.MemberUser)
 	return err
 }
 

@@ -51,3 +51,38 @@ SELECT u.*
 FROM block_relations br
 JOIN users u ON u.id = br.blocked_user
 WHERE origin_user = $1;
+
+-- name: CreateParty :one
+INSERT INTO parties (name)
+VALUES ($1)
+RETURNING *;
+
+-- name: GetUserParty :one
+SELECT p.*
+FROM party_members pm
+JOIN parties p ON p.id = pm.party
+WHERE member_user = $1;
+
+-- name: GetPartyMembers :many
+SELECT u.*
+FROM party_members pm
+JOIN users u ON u.id = pm.member_user
+WHERE party = $1
+ORDER BY pm.created_at;
+
+-- name: InsertPartyMember :exec
+INSERT INTO party_members (party, member_user)
+VALUES ($1, $2);
+
+-- name: DeletePartyMember :one
+DELETE FROM party_members
+WHERE member_user = $1
+RETURNING party;
+
+-- name: DeletePartyIfEmpty :exec
+DELETE FROM parties p
+WHERE p.id = $1
+  AND NOT EXISTS (
+    SELECT 1 FROM party_members pm
+    WHERE pm.party = p.id
+  );

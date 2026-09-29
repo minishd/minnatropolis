@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/minishd/minnatropolis/api/chat"
 	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
@@ -13,6 +14,7 @@ import (
 type usersHandlers struct {
 	ds *datastore.DataStore
 	rh *room.Handler
+	ch *chat.Handler
 }
 
 func (h *usersHandlers) handleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
@@ -94,6 +96,7 @@ func (h *usersHandlers) handleBlockListAdd(w http.ResponseWriter, r *http.Reques
 
 	// Update multiplayer
 	h.rh.UpdateBlockList(session.ForUser.ID, users)
+	h.ch.UpdateBlockList(session.ForUser.ID, users)
 
 	// No error, they should be blocked now
 	blocked := usersToBlockList(users)
@@ -128,6 +131,7 @@ func (h *usersHandlers) handleBlockListRemove(w http.ResponseWriter, r *http.Req
 
 	// Update multiplayer
 	h.rh.UpdateBlockList(session.ForUser.ID, users)
+	h.ch.UpdateBlockList(session.ForUser.ID, users)
 
 	// No error, so they should be unblocked now
 	blocked := usersToBlockList(users)

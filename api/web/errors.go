@@ -30,6 +30,13 @@ var (
 	ErrAlreadyBlocked = &Error{400, "user is already blocked"}
 	ErrNotBlocked     = &Error{400, "user was not blocked"}
 
+	ErrNoSuchParty      = &Error{404, "no such party"}
+	ErrAlreadyInParty   = &Error{400, "already in a party"}
+	ErrNotInParty       = &Error{400, "not in a party"}
+	ErrPartyNameInvalid = &Error{400, "party name invalid"}
+
+	ErrNotInMap = &Error{400, "not in a map"}
+
 	ErrUnauthorized    = &Error{401, "unauthorized"}
 	ErrTooManyRequests = &Error{429, "too many requests"}
 	ErrNotJSON         = &Error{415, "only json accepted"}

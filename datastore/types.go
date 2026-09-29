@@ -46,6 +46,20 @@ func dbUserToApp(in queries.User) *User {
 	}
 }
 
+type Party struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	Name      string
+}
+
+func dbPartyToApp(in queries.Party) *Party {
+	return &Party{
+		ID:        in.ID,
+		CreatedAt: in.CreatedAt,
+		Name:      in.Name,
+	}
+}
+
 type SessionToken struct {
 	ID        uuid.UUID
 	CreatedAt time.Time

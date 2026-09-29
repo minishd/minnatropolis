@@ -60,6 +60,19 @@ type BlockRelation struct {
 	BlockedUser uuid.UUID
 }
 
+type Party struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	Name      string
+}
+
+type PartyMember struct {
+	ID         uuid.UUID
+	CreatedAt  time.Time
+	Party      uuid.UUID
+	MemberUser uuid.UUID
+}
+
 type SessionToken struct {
 	ID        uuid.UUID
 	CreatedAt time.Time

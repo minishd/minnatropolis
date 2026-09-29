@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 
@@ -92,8 +93,13 @@ func ParseReq[Req any](r *http.Request) (req Req, err error) {
 		return
 	}
 
+	return ParseJSON[Req](r.Body)
+}
+
+// Parses and validates JSON
+func ParseJSON[Req any](data io.Reader) (req Req, err error) {
 	// Decode body
-	dec := json.NewDecoder(r.Body)
+	dec := json.NewDecoder(data)
 	dec.DisallowUnknownFields()
 	if err = dec.Decode(&req); err != nil {
 		err = ErrBodyMalformed
