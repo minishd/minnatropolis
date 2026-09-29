@@ -12,7 +12,10 @@ unconscious: true
 filter:
   indexpath: index.json
   singleplayerrooms:
-    - 3
+    - 2 # start map (disclaimers, etc)
+    - 3 # real-world room
+    - 7 # record player
+    - 9 # save notebook
   battleanimids:
   picturenames:
     - maple-wakeupsoul
