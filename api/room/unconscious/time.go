@@ -11,8 +11,8 @@ const (
 )
 
 func getCounTime() int32 {
-	now := time.Now().UTC()
-	epoch := time.UnixMicro(0).UTC()
+	now := time.Now()
+	epoch := time.UnixMicro(0)
 	sinceEpoch := now.Sub(epoch)
 	counHour := (sinceEpoch % perCounCycle) / perCounHour
 
