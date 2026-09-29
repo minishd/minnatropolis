@@ -8,6 +8,7 @@ import (
 	"github.com/minishd/minnatropolis/api/chat"
 	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/room/filters"
+	"github.com/minishd/minnatropolis/api/room/unconscious"
 	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
 	"golang.org/x/time/rate"
@@ -27,9 +28,12 @@ const (
 	chatMaxMessageSize = 4 * 1024
 )
 
-func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, filters *filters.Filters) {
+func AddRoutes(
+	mux *http.ServeMux, rh *room.Handler, ch *chat.Handler,
+	guardPSK []byte, ds *datastore.DataStore,
+	filters *filters.Filters, coun *unconscious.Unconscious,
+) {
 	// Set up upgrader
-	rh := room.NewHandler(ds, guardPSK, filters)
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
 		// Don't process each connection's messages in parallel
 		// If we do, the guard message counter check will start
@@ -43,7 +47,6 @@ func AddRoutes(mux *http.ServeMux, guardPSK []byte, ds *datastore.DataStore, fil
 	})
 
 	// Set up chat upgrader
-	ch := chat.NewHandler(ds, rh)
 	chatUpgrader := gws.NewUpgrader(ch, &gws.ServerOption{
 		ParallelEnabled:    false,
 		Recovery:           gws.Recovery,

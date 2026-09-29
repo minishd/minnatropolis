@@ -1,9 +1,11 @@
-package room
+package user
 
 // Type definitions for room users (players)
 // and associated functions
 
 import (
+	"encoding/binary"
+	"math/rand/v2"
 	"slices"
 	"sync"
 	"time"
@@ -33,6 +35,10 @@ const (
 	sendDelay = time.Second / 20
 )
 
+// Key that client data is stored under in
+// session storage k/v
+const kClientData = "cd"
+
 // The values that clients will assume
 // if they aren't specified.
 //
@@ -51,80 +57,122 @@ const (
 )
 
 // Data associated with a room client
-type clientData struct {
-	cID  int32
-	name string
+type ClientData struct {
+	CID  int32
+	Name string
 
 	outbox chan []any
 
-	accountUUID uuid.UUID
-	rank        int32
-	loggedIn    bool
-	badge       string
-	blocklist   map[uuid.UUID]struct{}
-	blocklistMu sync.RWMutex
+	AccountUUID uuid.UUID
+	Rank        int32
+	LoggedIn    bool
+	Badge       string
+	Blocklist   map[uuid.UUID]struct{}
+	BlocklistMu sync.RWMutex
 
-	guardKey, guardCount uint32
-	guardKeyBytes        []byte // so we don't need to recompute
+	GuardKey, GuardCount uint32
+	GuardKeyBytes        []byte // so we don't need to recompute
 
-	roomID int32
-	x, y   int32
-	facing int32
-	speed  int32
+	RoomID int32
+	X, Y   int32
+	Facing int32
+	Speed  int32
 
-	transparency int32
-	hidden       bool
-	sprite       string
-	spriteIndex  int32
-	sysName      string
-	flash        *pt.Flash
+	Transparency int32
+	Hidden       bool
+	Sprite       string
+	SpriteIndex  int32
+	SysName      string
+	Flash        *pt.Flash
 
 	// We need to store what pictures somebody has shown,
 	// so that if another player joins, we can sync them
 	// those pictures
-	activePictures map[int32]pt.Picture
+	ActivePictures map[int32]pt.Picture
+}
+
+func InitData(
+	session gws.SessionStorage, cID int32, username string, roomID int32,
+	accountUUID uuid.UUID, loggedIn bool, blocklist map[uuid.UUID]struct{},
+) {
+	// Make guard key
+	guardKey := rand.Uint32()
+	guardKeyBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(guardKeyBytes, guardKey)
+
+	// Make outbox, etc..
+	// [User.SendLoop] has its own buffer,
+	// we don't allocate one here..
+	outbox := make(chan []any)
+	activePictures := make(map[int32]pt.Picture)
+
+	cd := &ClientData{
+		CID:           cID,
+		Name:          username,
+		outbox:        outbox,
+		AccountUUID:   accountUUID,
+		LoggedIn:      loggedIn,
+		Blocklist:     blocklist,
+		GuardKey:      guardKey,
+		GuardKeyBytes: guardKeyBytes,
+
+		RoomID: roomID,
+		X:      defaultXY, Y: defaultXY,
+		Facing: defaultFacing,
+		Speed:  defaultSpeed,
+
+		Transparency: defaultTransparency,
+		Hidden:       defaultHidden,
+		Sprite:       defaultSprite,
+		SpriteIndex:  defaultSpriteIndex,
+		SysName:      defaultSysName,
+
+		ActivePictures: activePictures,
+	}
+
+	session.Store(kClientData, cd)
 }
 
 // Build a list of packets that sets up our initial state.
 // Sent to people when we enter a room, or when other people
 // enter a room we're in, so we look how we are meant to look
 // on their screen and appear at the position we're standing, etc
-func (d *clientData) getIntroMessages() (msgs []any) {
+func (d *ClientData) GetIntroMessages() (msgs []any) {
 	msgs = append(msgs, pt.ConnectS2C{
-		ID: d.cID, UUID: d.accountUUID,
-		Rank: d.rank, IsLoggedIn: d.loggedIn,
-		Badge: d.badge,
+		ID: d.CID, UUID: d.AccountUUID,
+		Rank: d.Rank, IsLoggedIn: d.LoggedIn,
+		Badge: d.Badge,
 	})
 
-	if d.x != defaultXY || d.y != defaultXY {
-		msgs = append(msgs, pt.MainPlayerPosS2C{ID: d.cID, X: d.x, Y: d.y})
+	if d.X != defaultXY || d.Y != defaultXY {
+		msgs = append(msgs, pt.MainPlayerPosS2C{ID: d.CID, X: d.X, Y: d.Y})
 	}
-	if d.facing != defaultFacing {
-		msgs = append(msgs, pt.FacingS2C{ID: d.cID, Direction: d.facing})
+	if d.Facing != defaultFacing {
+		msgs = append(msgs, pt.FacingS2C{ID: d.CID, Direction: d.Facing})
 	}
-	if d.speed != defaultSpeed {
-		msgs = append(msgs, pt.SpeedS2C{ID: d.cID, Speed: d.speed})
+	if d.Speed != defaultSpeed {
+		msgs = append(msgs, pt.SpeedS2C{ID: d.CID, Speed: d.Speed})
 	}
-	if d.name != "" {
-		msgs = append(msgs, pt.NameS2C{ID: d.cID, Name: d.name})
+	if d.Name != "" {
+		msgs = append(msgs, pt.NameS2C{ID: d.CID, Name: d.Name})
 	}
-	if d.spriteIndex != defaultSpriteIndex && d.sprite != defaultSprite {
-		msgs = append(msgs, pt.SpriteS2C{ID: d.cID, Name: d.sprite, Index: d.spriteIndex})
+	if d.SpriteIndex != defaultSpriteIndex && d.Sprite != defaultSprite {
+		msgs = append(msgs, pt.SpriteS2C{ID: d.CID, Name: d.Sprite, Index: d.SpriteIndex})
 	}
-	if d.transparency != defaultTransparency {
-		msgs = append(msgs, pt.TransparencyS2C{ID: d.cID, Transparency: d.transparency})
+	if d.Transparency != defaultTransparency {
+		msgs = append(msgs, pt.TransparencyS2C{ID: d.CID, Transparency: d.Transparency})
 	}
-	if d.hidden != defaultHidden {
-		msgs = append(msgs, pt.HiddenS2C{ID: d.cID, Hidden: d.hidden})
+	if d.Hidden != defaultHidden {
+		msgs = append(msgs, pt.HiddenS2C{ID: d.CID, Hidden: d.Hidden})
 	}
-	if d.sysName != defaultSysName {
-		msgs = append(msgs, pt.SysNameS2C{ID: d.cID, Name: d.sysName})
+	if d.SysName != defaultSysName {
+		msgs = append(msgs, pt.SysNameS2C{ID: d.CID, Name: d.SysName})
 	}
-	if d.flash != nil {
-		msgs = append(msgs, pt.RepeatingFlashS2C{ID: d.cID, Flash: *d.flash})
+	if d.Flash != nil {
+		msgs = append(msgs, pt.RepeatingFlashS2C{ID: d.CID, Flash: *d.Flash})
 	}
-	for _, pic := range d.activePictures {
-		msgs = append(msgs, pt.ShowPictureS2C{ID: d.cID, Picture: pic})
+	for _, pic := range d.ActivePictures {
+		msgs = append(msgs, pt.ShowPictureS2C{ID: d.CID, Picture: pic})
 	}
 
 	return
@@ -133,26 +181,27 @@ func (d *clientData) getIntroMessages() (msgs []any) {
 // Wrapper around a [gws.Conn].
 type User gws.Conn
 
-func NewUser(c *gws.Conn) *User { return (*User)(c) }
+func New(c *gws.Conn) *User { return (*User)(c) }
 
 // Get underlying [gws.Conn].
 func (u *User) Conn() *gws.Conn { return (*gws.Conn)(u) }
 
-// Key that client data is stored under in
-// session storage k/v
-const kClientData = "cd"
+// Sets a user's initial [ClientData].
+func SetData(session gws.SessionStorage, cd *ClientData) {
+	session.Store(kClientData, cd)
+}
 
-// Get [clientData] associated with a connection.
-func (u *User) getData() *clientData {
+// Get [ClientData] associated with a connection.
+func (u *User) Data() *ClientData {
 	cd, _ := u.Conn().Session().Load(kClientData)
-	return cd.(*clientData)
+	return cd.(*ClientData)
 }
 
 // The message loop of a user.
 // Does its best to gather many outbound messages
 // into a smaller amount of large messages, which it sends.
-func (u *User) sendLoop() {
-	d := u.getData()
+func (u *User) SendLoop() {
+	d := u.Data()
 
 	var pending []any         // re-used buffer of pending messages
 	var endMax time.Time      // the latest time current batch could end
@@ -204,5 +253,11 @@ func (u *User) SendImmediate(msgs ...any) {
 
 // Queue a YNO message to be sent.
 func (u *User) Send(msgs ...any) {
-	u.getData().outbox <- msgs
+	u.Data().outbox <- msgs
+}
+
+// Closes a user's outbox.
+// This also ends [User.SendLoop].
+func (d *ClientData) OnClose() {
+	close(d.outbox)
 }

@@ -6,16 +6,17 @@ package room
 import (
 	"github.com/google/uuid"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
+	"github.com/minishd/minnatropolis/api/room/user"
 	"github.com/minishd/minnatropolis/datastore"
 )
 
 // If a user is in `first` but not `second`,
 // send the specified packets to them
 func (h *Handler) sendToListDifferences(
-	us *User,
+	us *user.User,
 	first map[uuid.UUID]struct{},
 	second map[uuid.UUID]struct{},
-	makePackets func(*clientData) []any,
+	makePackets func(*user.ClientData) []any,
 ) {
 	for themID, _ := range first {
 		// Skip if in other list
@@ -31,9 +32,9 @@ func (h *Handler) sendToListDifferences(
 			continue
 		}
 		// Skip if not in same room
-		usData := us.getData()
-		themData := them.getData()
-		if usData.roomID != themData.roomID {
+		usData := us.Data()
+		themData := them.Data()
+		if usData.RoomID != themData.RoomID {
 			continue
 		}
 		// Send packets to the two players
@@ -56,9 +57,9 @@ func (h *Handler) UpdateBlockList(accountUUID uuid.UUID, blocked []*datastore.Us
 	// We don't want another update to come in
 	// as we're dispatching connect/disconnect packets
 	// That could cause invalid states
-	d := us.getData()
-	d.blocklistMu.Lock()
-	defer d.blocklistMu.Unlock()
+	d := us.Data()
+	d.BlocklistMu.Lock()
+	defer d.BlocklistMu.Unlock()
 
 	// Make new blocklist
 	blocklistNew := make(map[uuid.UUID]struct{}, len(blocked))
@@ -71,17 +72,17 @@ func (h *Handler) UpdateBlockList(accountUUID uuid.UUID, blocked []*datastore.Us
 	defer h.usersMu.RUnlock()
 
 	// Handle disconnections
-	h.sendToListDifferences(us, blocklistNew, d.blocklist, func(cd *clientData) []any {
-		return []any{pt.DisconnectS2C{ID: cd.cID}}
+	h.sendToListDifferences(us, blocklistNew, d.Blocklist, func(cd *user.ClientData) []any {
+		return []any{pt.DisconnectS2C{ID: cd.CID}}
 	})
 
 	// Handle connections
-	h.sendToListDifferences(us, d.blocklist, blocklistNew, func(cd *clientData) []any {
-		return cd.getIntroMessages()
+	h.sendToListDifferences(us, d.Blocklist, blocklistNew, func(cd *user.ClientData) []any {
+		return cd.GetIntroMessages()
 	})
 
 	// Set blocklist
-	d.blocklist = blocklistNew
+	d.Blocklist = blocklistNew
 }
 
 // Get the account IDs of everyone in the same room
@@ -96,17 +97,17 @@ func (h *Handler) GetRoommates(accountUUID uuid.UUID) (roommates map[uuid.UUID]s
 		return
 	}
 
-	d := us.getData()
-	roommates = map[uuid.UUID]struct{}{d.accountUUID: {}}
+	d := us.Data()
+	roommates = map[uuid.UUID]struct{}{d.AccountUUID: {}}
 	if h.arePacketsSkippedMap(d) {
 		// Singleplayer map, so just them
 		return
 	}
 
-	room := h.rooms[d.roomID]
+	room := h.rooms[d.RoomID]
 	room.RLock()
 	for _, m := range room.members {
-		roommates[m.getData().accountUUID] = struct{}{}
+		roommates[m.Data().AccountUUID] = struct{}{}
 	}
 	room.RUnlock()
 

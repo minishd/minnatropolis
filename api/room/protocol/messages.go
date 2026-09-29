@@ -184,6 +184,21 @@ type ErasePictureS2C struct {
 	PicID int32
 }
 
+type SyncServerVariableS2C struct {
+	VarID int32
+	Value int32
+}
+
+type CUTimeS2C struct {
+	Time    int32
+	RandInt int32
+}
+
+type CUWeatherS2C struct {
+	Temperature   int32
+	Precipitation int32
+}
+
 // ********** Client -> Server **********
 // These are packets sent by the client
 // and handled by the server.
@@ -304,6 +319,9 @@ func init() {
 	registerS2C[ShowPictureS2C]("ap")
 	registerS2C[MovePictureS2C]("mp")
 	registerS2C[ErasePictureS2C]("rp")
+	registerS2C[SyncServerVariableS2C]("ssv")
+	registerS2C[CUTimeS2C]("cut")
+	registerS2C[CUWeatherS2C]("cuw")
 
 	registerC2S[SwitchRoomC2S]("sr")
 	registerC2S[MainPlayerPosC2S]("m")
