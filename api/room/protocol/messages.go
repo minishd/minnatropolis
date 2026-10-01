@@ -23,7 +23,7 @@ type BasePicture struct {
 	EffectPower             int32
 }
 type Picture struct {
-	BasePicture
+	*BasePicture
 
 	PicName        string
 	UseTranspColor bool
@@ -134,12 +134,12 @@ type SoundEffectS2C struct {
 
 type FlashS2C struct {
 	ID    int32
-	Flash Flash
+	Flash *Flash
 }
 
 type RepeatingFlashS2C struct {
 	ID    int32
-	Flash Flash
+	Flash *Flash
 }
 
 type RemoveRepeatingFlashS2C struct {
@@ -169,12 +169,12 @@ type PictureSyncListS2C struct {
 
 type ShowPictureS2C struct {
 	ID int32
-	Picture
+	*Picture
 }
 
 type MovePictureS2C struct {
 	ID int32
-	BasePicture
+	*BasePicture
 
 	Duration int32
 }
@@ -252,11 +252,11 @@ type SoundEffectC2S struct {
 }
 
 type FlashC2S struct {
-	Flash Flash
+	Flash *Flash
 }
 
 type RepeatingFlashC2S struct {
-	Flash Flash
+	Flash *Flash
 }
 
 type RemoveRepeatingFlashC2S struct{}
@@ -266,11 +266,11 @@ type ShowPlayerBattleAnimC2S struct {
 }
 
 type ShowPictureC2S struct {
-	Picture
+	*Picture
 }
 
 type MovePictureC2S struct {
-	BasePicture
+	*BasePicture
 
 	Duration int32
 }

@@ -80,6 +80,8 @@ func serializeAny(val reflect.Value) (msgBytes []byte) {
 			return serializeStruct(val)
 		case reflect.Slice:
 			return serializeSlice(val)
+		case reflect.Pointer:
+			return serializeAny(val.Elem())
 		default:
 			panic("serialize unhandled type")
 		}

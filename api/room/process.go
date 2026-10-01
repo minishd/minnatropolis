@@ -15,7 +15,7 @@ func (h *Handler) removePicture(d *user.ClientData, picID int32) {
 	h.shareToRoom(d, pt.ErasePictureS2C{ID: d.CID, PicID: picID})
 }
 
-func (h *Handler) updatePicture(d *user.ClientData, pic pt.Picture) {
+func (h *Handler) updatePicture(d *user.ClientData, pic *pt.Picture) {
 	// If it's not a one-shot effect,
 	// we will keep track of it
 	if !pic.SpritesheetPlayOnce {
@@ -76,7 +76,6 @@ func (h *Handler) processMessage(u *user.User, m any) {
 	case pt.FlashC2S:
 		h.shareToRoom(d, pt.FlashS2C{ID: d.CID, Flash: m.Flash})
 	case pt.RepeatingFlashC2S:
-		d.Flash = &m.Flash
 		h.shareToRoom(d, pt.RepeatingFlashS2C{ID: d.CID, Flash: m.Flash})
 	case pt.RemoveRepeatingFlashC2S:
 		d.Flash = nil

@@ -88,7 +88,7 @@ type ClientData struct {
 	// We need to store what pictures somebody has shown,
 	// so that if another player joins, we can sync them
 	// those pictures
-	ActivePictures map[int32]pt.Picture
+	ActivePictures map[int32]*pt.Picture
 }
 
 func InitData(
@@ -104,7 +104,7 @@ func InitData(
 	// [User.SendLoop] has its own buffer,
 	// we don't allocate one here..
 	outbox := make(chan []any)
-	activePictures := make(map[int32]pt.Picture)
+	activePictures := make(map[int32]*pt.Picture)
 
 	cd := &ClientData{
 		CID:           cID,
@@ -169,7 +169,7 @@ func (d *ClientData) GetIntroMessages() (msgs []any) {
 		msgs = append(msgs, pt.SysNameS2C{ID: d.CID, Name: d.SysName})
 	}
 	if d.Flash != nil {
-		msgs = append(msgs, pt.RepeatingFlashS2C{ID: d.CID, Flash: *d.Flash})
+		msgs = append(msgs, pt.RepeatingFlashS2C{ID: d.CID, Flash: d.Flash})
 	}
 	for _, pic := range d.ActivePictures {
 		msgs = append(msgs, pt.ShowPictureS2C{ID: d.CID, Picture: pic})

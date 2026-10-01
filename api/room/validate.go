@@ -113,7 +113,7 @@ func isValidPicDuration(duration int32) bool {
 	return duration >= minPicDuration
 }
 
-func validateBasePicture(bp pt.BasePicture) error {
+func validateBasePicture(bp *pt.BasePicture) error {
 	if !isValidPicID(bp.PicID) {
 		return fmt.Errorf("pic id %d out of range", bp.PicID)
 	}
@@ -133,7 +133,7 @@ func validateBasePicture(bp pt.BasePicture) error {
 	return nil
 }
 
-func validateFlash(f pt.Flash) error {
+func validateFlash(f *pt.Flash) error {
 	if !isValidRGB(f.R) || !isValidRGB(f.G) || !isValidRGB(f.B) {
 		return fmt.Errorf("flash rgb %d,%d,%d out of range", f.R, f.G, f.B)
 	}

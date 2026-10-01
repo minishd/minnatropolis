@@ -62,6 +62,21 @@ func deserializeAny(typ reflect.Type, parts []string) (val reflect.Value, consum
 		return deserializeStruct(typ, parts)
 	case reflect.Slice:
 		return deserializeSlice(typ, parts)
+	case reflect.Pointer:
+		// Instantiate pointer [reflect.Value]
+		typElem := typ.Elem()
+		val = reflect.New(typElem)
+
+		// Deserialize underlying type
+		pVal, pConsumed, pErr := deserializeAny(typElem, parts)
+		if err = pErr; err != nil {
+			return
+		}
+		consumed = pConsumed
+
+		// Set pointer's value to result
+		val.Elem().Set(pVal)
+		return
 	}
 
 	val = reflect.Indirect(reflect.New(typ))
@@ -118,8 +133,8 @@ func deserializeAny(typ reflect.Type, parts []string) (val reflect.Value, consum
 	}
 
 	// Primitive protocol types consume one part,
-	// so add that to our total
-	consumed++
+	// so set that as our count
+	consumed = 1
 
 	return
 }
