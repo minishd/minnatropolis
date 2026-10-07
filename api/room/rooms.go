@@ -35,13 +35,13 @@ func (h *Handler) hasRoom(roomID int32) bool {
 // receive any more game events from their current
 // room.
 func (h *Handler) unsetRoom(m *user.User) {
-	d := m.Data()
+	d := m.GetData()
 
 	// Remove them from their room
 	room := h.rooms[d.RoomID]
 	room.Lock()
 	room.members = slices.DeleteFunc(room.members, func(rm *user.User) bool {
-		return rm.Data().CID == d.CID
+		return rm.GetData().CID == d.CID
 	})
 	room.Unlock()
 }
@@ -63,7 +63,7 @@ func (h *Handler) setRoom(m *user.User, roomID int32) {
 	room.Unlock()
 
 	// Set their room ID
-	m.Data().RoomID = roomID
+	m.GetData().RoomID = roomID
 }
 
 // Whether or not we should skip packets in a room.
@@ -105,7 +105,7 @@ func (h *Handler) shareToRoom(d *user.ClientData, msgs ...any) {
 	room := h.rooms[d.RoomID]
 	room.RLock()
 	for _, m := range room.members {
-		if h.arePacketsSkippedPlayer(d, m.Data()) {
+		if h.arePacketsSkippedPlayer(d, m.GetData()) {
 			continue
 		}
 
@@ -121,7 +121,7 @@ func (h *Handler) shareToRoom(d *user.ClientData, msgs ...any) {
 // them in the new map, so it is appropriate
 // for actual game map transitions
 func (h *Handler) changeRoom(u *user.User, newID int32) {
-	d := u.Data()
+	d := u.GetData()
 
 	// If the two rooms are different,
 	// we need to handle leaving the other room
@@ -148,7 +148,7 @@ func (h *Handler) changeRoom(u *user.User, newID int32) {
 		room := h.rooms[newID]
 		room.RLock()
 		for _, m := range room.members {
-			md := m.Data()
+			md := m.GetData()
 			if h.arePacketsSkippedPlayer(d, md) {
 				continue
 			}
