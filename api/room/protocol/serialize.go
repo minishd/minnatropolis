@@ -108,7 +108,6 @@ func serializeOne(msg any) (msgBytes []byte) {
 
 // Convert one or more messages into YNO's format
 func Serialize(msgs ...any) (msgsBytes []byte) {
-	msgsLen := len(msgs)
 	for i, msg := range msgs {
 		// Serialize and push single message
 		msgBytes := serializeOne(msg)
@@ -116,7 +115,7 @@ func Serialize(msgs ...any) (msgsBytes []byte) {
 
 		// If it's not the last message,
 		// add a message delimiter
-		if i+1 != msgsLen {
+		if i+1 != len(msgs) {
 			msgsBytes = append(msgsBytes, messageDelim...)
 		}
 	}
