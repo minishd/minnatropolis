@@ -47,10 +47,6 @@ func newStringFilter(standins map[rune][]rune, strings []string) *stringFilter {
 	return &stringFilter{baseNode, reals}
 }
 
-func r2s(r rune) string {
-	return string(utf8.AppendRune(nil, r))
-}
-
 // Recursive function that handles the logic of
 // checking for a bad prefix.
 func (sf *stringFilter) hasBadPrefixStep(prevNode *letterNode, text string, depth int, farthest int) int {
