@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"encoding/hex"
-	"errors"
 	"flag"
 	"log"
 	"net/http"
@@ -13,10 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/goccy/go-yaml"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/joho/godotenv"
 	"github.com/minishd/minnatropolis/api"
 	"github.com/minishd/minnatropolis/api/chat"
 	"github.com/minishd/minnatropolis/api/room"
@@ -29,22 +26,6 @@ import (
 //go:embed sql/migrations/*.sql
 var embedMigrations embed.FS
 
-type configFile struct {
-	DBConnect string
-	ListenOn  string
-
-	GuardPSK string
-	Filter   struct {
-		IndexPath         string
-		SingleplayerRooms []int32
-		PictureNames      []string
-		PicturePrefixes   []string
-		BattleAnimIDs     []int32
-	}
-
-	Unconscious bool
-}
-
 func run(rootCtx context.Context) error {
 	// Make context for graceful shutdown
 	ctx, cancel := signal.NotifyContext(rootCtx, os.Interrupt)
@@ -55,25 +36,15 @@ func run(rootCtx context.Context) error {
 	flag.Parse()
 
 	// Load config
-	configData, err := os.ReadFile(*configPath)
+	cfg, err := loadConfig(*configPath)
 	if err != nil {
-		return err
-	}
-	var cfg configFile
-	if err := yaml.Unmarshal(configData, &cfg); err != nil {
 		return err
 	}
 
-	// Check config
+	// Parse guard PSK
 	guardPSK, err := hex.DecodeString(cfg.GuardPSK)
 	if err != nil {
 		return err
-	}
-	if cfg.DBConnect == "" {
-		return errors.New("no db connect URI was specified")
-	}
-	if cfg.Filter.IndexPath == "" {
-		return errors.New("index path wasn't specified")
 	}
 
 	// Set up filters
@@ -84,6 +55,16 @@ func run(rootCtx context.Context) error {
 		cfg.Filter.PicturePrefixes,
 		cfg.Filter.SingleplayerRooms,
 	)
+	if err != nil {
+		return err
+	}
+
+	// Set up text filters
+	tfChat, err := initTextFilter(cfg.TextFilter.Chat)
+	if err != nil {
+		return err
+	}
+	tfUsernames, err := initTextFilter(cfg.TextFilter.Usernames)
 	if err != nil {
 		return err
 	}
@@ -121,8 +102,8 @@ func run(rootCtx context.Context) error {
 	// Set up API
 	mux := http.NewServeMux()
 	rh := room.NewHandler(ds, guardPSK, filters, coun)
-	ch := chat.NewHandler(ds, rh)
-	api.AddRoutes(mux, rh, ch, guardPSK, ds, filters, coun)
+	ch := chat.NewHandler(ds, rh, tfChat)
+	api.AddRoutes(mux, rh, ch, guardPSK, ds, filters, coun, tfChat, tfUsernames)
 
 	// Set up server
 	server := &http.Server{
@@ -158,8 +139,6 @@ func run(rootCtx context.Context) error {
 }
 
 func main() {
-	godotenv.Load()
-
 	ctx := context.Background()
 	if err := run(ctx); err != nil {
 		log.Fatal("initialization failed: ", err)

@@ -10,11 +10,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
+	"github.com/minishd/minnatropolis/textfilter"
 )
 
 // Shared state for /auth API endpoint handlers
 type authHandlers struct {
-	ds *datastore.DataStore
+	ds          *datastore.DataStore
+	tfUsernames *textfilter.TextFilter
 }
 
 const sessionTokenLifetime = time.Hour * 24 * 30
@@ -61,6 +63,12 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 	// Parse request
 	req, err := web.ParseReq[registerReq](r)
 	if err != nil {
+		return
+	}
+
+	// Test username on text filter
+	if h.tfUsernames.ContainsAny(req.Username) {
+		err = web.ErrUsernameFiltered
 		return
 	}
 

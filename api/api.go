@@ -11,6 +11,7 @@ import (
 	"github.com/minishd/minnatropolis/api/room/unconscious"
 	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
+	"github.com/minishd/minnatropolis/textfilter"
 	"golang.org/x/time/rate"
 )
 
@@ -32,6 +33,7 @@ func AddRoutes(
 	mux *http.ServeMux, rh *room.Handler, ch *chat.Handler,
 	guardPSK []byte, ds *datastore.DataStore,
 	filters *filters.Filters, coun *unconscious.Unconscious,
+	tfChat *textfilter.TextFilter, tfUsernames *textfilter.TextFilter,
 ) {
 	// Set up upgrader
 	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
@@ -57,7 +59,7 @@ func AddRoutes(
 
 	// Set routes (auth)
 	authMux := http.NewServeMux()
-	ah := &authHandlers{ds}
+	ah := &authHandlers{ds, tfUsernames}
 
 	// Set limits (rate limiting)
 	registerLimiter := web.NewLimiter(rate.Every(registerRateLimitEvery), registerRateLimitBurst)
