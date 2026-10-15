@@ -1,4 +1,4 @@
-package api
+package users
 
 import (
 	"net/http"
@@ -11,13 +11,17 @@ import (
 	"github.com/minishd/minnatropolis/datastore"
 )
 
-type usersHandlers struct {
+type Handlers struct {
 	ds *datastore.DataStore
 	rh *room.Handler
 	ch *chat.Handler
 }
 
-func (h *usersHandlers) handleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func NewHandlers(ds *datastore.DataStore, rh *room.Handler, ch *chat.Handler) *Handlers {
+	return &Handlers{ds, rh, ch}
+}
+
+func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type meRes struct {
 		AccountID uuid.UUID
 		Username  string
@@ -53,7 +57,7 @@ func usersToBlockList(users []*datastore.User) []blocklistEntry {
 
 // Returns all accounts the user has blocked
 // (Needs authentication)
-func (h *usersHandlers) handleBlockList(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleBlockList(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	// Look up user's block list
 	ctx := r.Context()
 	users, err := h.ds.GetBlockedUsers(ctx, session.ForUser.ID)
@@ -69,7 +73,7 @@ func (h *usersHandlers) handleBlockList(w http.ResponseWriter, r *http.Request, 
 
 // Adds an account to user's block list
 // (Needs authentication)
-func (h *usersHandlers) handleBlockListAdd(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleBlockListAdd(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type blocklistAddReq struct {
 		UserID uuid.UUID
 	}
@@ -106,7 +110,7 @@ func (h *usersHandlers) handleBlockListAdd(w http.ResponseWriter, r *http.Reques
 
 // Removes an account from user's block list
 // (Needs authentication)
-func (h *usersHandlers) handleBlockListRemove(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleBlockListRemove(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type blocklistRemoveReq struct {
 		UserID uuid.UUID
 	}

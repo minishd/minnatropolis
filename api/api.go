@@ -5,10 +5,13 @@ import (
 	"time"
 
 	"github.com/lxzan/gws"
+	"github.com/minishd/minnatropolis/api/auth"
 	"github.com/minishd/minnatropolis/api/chat"
+	"github.com/minishd/minnatropolis/api/parties"
 	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/room/filters"
 	"github.com/minishd/minnatropolis/api/room/unconscious"
+	"github.com/minishd/minnatropolis/api/users"
 	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
 	"github.com/minishd/minnatropolis/textfilter"
@@ -35,8 +38,8 @@ func AddRoutes(
 	filters *filters.Filters, coun *unconscious.Unconscious,
 	tfChat *textfilter.TextFilter, tfUsernames *textfilter.TextFilter,
 ) {
-	// Set up upgrader
-	upgrader := gws.NewUpgrader(rh, &gws.ServerOption{
+	// Set up room upgrader
+	roomUpgrader := gws.NewUpgrader(rh, &gws.ServerOption{
 		// Don't process each connection's messages in parallel
 		// If we do, the guard message counter check will start
 		// dropping legitimate messages that arrived in order,
@@ -59,7 +62,7 @@ func AddRoutes(
 
 	// Set routes (auth)
 	authMux := http.NewServeMux()
-	ah := &authHandlers{ds, tfUsernames}
+	ah := auth.NewHandlers(ds, tfUsernames)
 
 	// Set limits (rate limiting)
 	registerLimiter := web.NewLimiter(rate.Every(registerRateLimitEvery), registerRateLimitBurst)
@@ -67,31 +70,31 @@ func AddRoutes(
 	roomLimiter := web.NewLimiter(rate.Every(roomRateLimitEvery), roomRateLimitBurst)
 	chatLimiter := web.NewLimiter(rate.Every(chatRateLimitEvery), chatRateLimitBurst)
 
-	authMux.Handle("POST /register", registerLimiter.Check(ah.handleRegister))
-	authMux.Handle("POST /login", loginLimiter.Check(ah.handleLogin))
-	authMux.Handle("POST /logout", web.RequireAuth(ds, ah.handleLogout))
-	authMux.Handle("POST /logout-others", web.RequireAuth(ds, ah.handleLogoutOthers))
-	authMux.Handle("POST /renew", web.RequireAuth(ds, ah.handleRenew))
+	authMux.Handle("POST /register", registerLimiter.Check(ah.HandleRegister))
+	authMux.Handle("POST /login", loginLimiter.Check(ah.HandleLogin))
+	authMux.Handle("POST /logout", web.RequireAuth(ds, ah.HandleLogout))
+	authMux.Handle("POST /logout-others", web.RequireAuth(ds, ah.HandleLogoutOthers))
+	authMux.Handle("POST /renew", web.RequireAuth(ds, ah.HandleRenew))
 
 	// Set routes (users)
 	usersMux := http.NewServeMux()
-	uh := &usersHandlers{ds, rh, ch}
-	usersMux.Handle("GET /me", web.RequireAuth(ds, uh.handleMe))
-	usersMux.Handle("GET /blocklist", web.RequireAuth(ds, uh.handleBlockList))
-	usersMux.Handle("POST /blocklist", web.RequireAuth(ds, uh.handleBlockListAdd))
-	usersMux.Handle("DELETE /blocklist", web.RequireAuth(ds, uh.handleBlockListRemove))
+	uh := users.NewHandlers(ds, rh, ch)
+	usersMux.Handle("GET /me", web.RequireAuth(ds, uh.HandleMe))
+	usersMux.Handle("GET /blocklist", web.RequireAuth(ds, uh.HandleBlockList))
+	usersMux.Handle("POST /blocklist", web.RequireAuth(ds, uh.HandleBlockListAdd))
+	usersMux.Handle("DELETE /blocklist", web.RequireAuth(ds, uh.HandleBlockListRemove))
 
 	// Set routes (parties)
 	partiesMux := http.NewServeMux()
-	ph := &partiesHandlers{ds, ch}
-	partiesMux.Handle("GET /me", web.RequireAuth(ds, ph.handleMe))
-	partiesMux.Handle("POST /create", web.RequireAuth(ds, ph.handleCreate))
-	partiesMux.Handle("POST /join", web.RequireAuth(ds, ph.handleJoin))
-	partiesMux.Handle("POST /leave", web.RequireAuth(ds, ph.handleLeave))
+	ph := parties.NewHandlers(ds, ch)
+	partiesMux.Handle("GET /me", web.RequireAuth(ds, ph.HandleMe))
+	partiesMux.Handle("POST /create", web.RequireAuth(ds, ph.HandleCreate))
+	partiesMux.Handle("POST /join", web.RequireAuth(ds, ph.HandleJoin))
+	partiesMux.Handle("POST /leave", web.RequireAuth(ds, ph.HandleLeave))
 
 	// Set routes
 	mux.Handle("GET /room", roomLimiter.Check(func(w http.ResponseWriter, r *http.Request) error {
-		socket, err := upgrader.Upgrade(w, r)
+		socket, err := roomUpgrader.Upgrade(w, r)
 		if err != nil {
 			return nil
 		}
