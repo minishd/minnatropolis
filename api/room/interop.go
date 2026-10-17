@@ -32,8 +32,8 @@ func (h *Handler) sendToListDifferences(
 			continue
 		}
 		// Skip if not in same room
-		usData := us.Data()
-		themData := them.Data()
+		usData := us.GetData()
+		themData := them.GetData()
 		if usData.RoomID != themData.RoomID {
 			continue
 		}
@@ -57,7 +57,7 @@ func (h *Handler) UpdateBlockList(accountUUID uuid.UUID, blocked []*datastore.Us
 	// We don't want another update to come in
 	// as we're dispatching connect/disconnect packets
 	// That could cause invalid states
-	d := us.Data()
+	d := us.GetData()
 	d.BlocklistMu.Lock()
 	defer d.BlocklistMu.Unlock()
 
@@ -97,7 +97,7 @@ func (h *Handler) GetRoommates(accountUUID uuid.UUID) (roommates map[uuid.UUID]s
 		return
 	}
 
-	d := us.Data()
+	d := us.GetData()
 	roommates = map[uuid.UUID]struct{}{d.AccountUUID: {}}
 	if h.arePacketsSkippedMap(d) {
 		// Singleplayer map, so just them
@@ -107,7 +107,7 @@ func (h *Handler) GetRoommates(accountUUID uuid.UUID) (roommates map[uuid.UUID]s
 	room := h.rooms[d.RoomID]
 	room.RLock()
 	for _, m := range room.members {
-		roommates[m.Data().AccountUUID] = struct{}{}
+		roommates[m.GetData().AccountUUID] = struct{}{}
 	}
 	room.RUnlock()
 

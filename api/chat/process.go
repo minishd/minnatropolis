@@ -13,6 +13,9 @@ import (
 func (h *Handler) processMessage(u *User, channel Channel, content string) {
 	d := u.getData()
 
+	// Filter message's text
+	content = h.tf.ReplaceAll(content, "♥", true)
+
 	// Figure out who should get it
 	var shouldGet func(them *clientData) bool
 	switch channel {

@@ -1,4 +1,4 @@
-package api
+package auth
 
 import (
 	"context"
@@ -10,11 +10,17 @@ import (
 	"github.com/google/uuid"
 	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
+	"github.com/minishd/minnatropolis/textfilter"
 )
 
 // Shared state for /auth API endpoint handlers
-type authHandlers struct {
-	ds *datastore.DataStore
+type Handlers struct {
+	ds          *datastore.DataStore
+	tfUsernames *textfilter.TextFilter
+}
+
+func NewHandlers(ds *datastore.DataStore, tfUsernames *textfilter.TextFilter) *Handlers {
+	return &Handlers{ds, tfUsernames}
 }
 
 const sessionTokenLifetime = time.Hour * 24 * 30
@@ -35,7 +41,7 @@ func sendCookieOK(w http.ResponseWriter, token string) {
 
 // Helper function that generates a session token for a user
 // and returns its string value
-func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID) (token string, err error) {
+func (h *Handlers) issueSessionToken(ctx context.Context, forUser uuid.UUID) (token string, err error) {
 	// Generate token string
 	// then try to add it to DB
 	token = rand.Text()
@@ -50,7 +56,7 @@ func (h *authHandlers) issueSessionToken(ctx context.Context, forUser uuid.UUID)
 }
 
 // Handles account registration
-func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (err error) {
+func (h *Handlers) HandleRegister(w http.ResponseWriter, r *http.Request) (err error) {
 	type registerReq struct {
 		// Further validation of username is implemented
 		// as a DB constraint
@@ -61,6 +67,12 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 	// Parse request
 	req, err := web.ParseReq[registerReq](r)
 	if err != nil {
+		return
+	}
+
+	// Test username on text filter
+	if h.tfUsernames.ContainsAny(req.Username) {
+		err = web.ErrUsernameFiltered
 		return
 	}
 
@@ -98,7 +110,7 @@ func (h *authHandlers) handleRegister(w http.ResponseWriter, r *http.Request) (e
 }
 
 // Handles logging into accounts
-func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err error) {
+func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) (err error) {
 	type loginReq struct {
 		Username string `validate:"required"`
 		Password string `validate:"required"`
@@ -143,7 +155,7 @@ func (h *authHandlers) handleLogin(w http.ResponseWriter, r *http.Request) (err 
 
 // Handles logging out of accounts
 // (Needs authentication)
-func (h *authHandlers) handleLogout(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleLogout(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	ctx := r.Context()
 	err = h.ds.DeleteSessionToken(ctx, session.ID)
 	if err != nil {
@@ -155,7 +167,7 @@ func (h *authHandlers) handleLogout(w http.ResponseWriter, r *http.Request, sess
 }
 
 // Signs out all other sessions besides the current
-func (h *authHandlers) handleLogoutOthers(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleLogoutOthers(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	ctx := r.Context()
 	err = h.ds.ClearOtherSessionTokensForUser(ctx, session.ForUser.ID, session.ID)
 	if err != nil {
@@ -167,7 +179,7 @@ func (h *authHandlers) handleLogoutOthers(w http.ResponseWriter, r *http.Request
 }
 
 // Renews the current session token
-func (h *authHandlers) handleRenew(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleRenew(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	ctx := r.Context()
 	expiresAt := sessionTokenExpiryNow()
 	err = h.ds.UpdateSessionTokenExpiry(ctx, session.ID, expiresAt)

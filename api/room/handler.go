@@ -124,13 +124,13 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 
 func (h *Handler) OnOpen(c *gws.Conn) {
 	s := user.New(c)
-	log.Println("open cID=", s.Data().CID)
+	log.Println("open cID=", s.GetData().CID)
 
 	// Add to user registry
 	// ..
 	// We don't do it in [Handler.Authorize] because
 	// it's called before there's a [gws.Conn]
-	d := s.Data()
+	d := s.GetData()
 	h.usersMu.Lock()
 
 	// Double-check that they didn't connect
@@ -139,7 +139,7 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	if _, ok := h.users[d.AccountUUID]; ok {
 		// They did, so close this connection
 		h.usersMu.Unlock()
-		log.Println("early close cID=", s.Data().CID)
+		log.Println("early close cID=", s.GetData().CID)
 		s.Conn().WriteClose(1000, nil)
 		return
 	}
@@ -204,7 +204,7 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 	defer msg.Close()
 
 	s := user.New(c)
-	d := s.Data()
+	d := s.GetData()
 
 	m := msg.Bytes()
 	if len(m) < 8 {
@@ -258,14 +258,14 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 
 func (h *Handler) OnClose(c *gws.Conn, err error) {
 	s := user.New(c)
-	log.Println("close cID=", s.Data().CID)
+	log.Println("close cID=", s.GetData().CID)
 
 	// Remove all subscriptions
 	h.unsetRoom(s)
 
 	// Remove from user registry
 	// Only if it's this connection because early closed ones were never added
-	d := s.Data()
+	d := s.GetData()
 	h.usersMu.Lock()
 	if h.users[d.AccountUUID] == s {
 		delete(h.users, d.AccountUUID)

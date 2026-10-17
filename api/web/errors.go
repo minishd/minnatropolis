@@ -25,6 +25,7 @@ var (
 	ErrInvalidCredentials = &Error{400, "invalid credentials"}
 	ErrUsernameTaken      = &Error{400, "username taken"}
 	ErrUsernameInvalid    = &Error{400, "username invalid"}
+	ErrUsernameFiltered   = &Error{400, "username filtered"}
 
 	ErrNoSuchUser     = &Error{404, "no such user"}
 	ErrAlreadyBlocked = &Error{400, "user is already blocked"}

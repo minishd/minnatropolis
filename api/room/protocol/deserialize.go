@@ -13,14 +13,13 @@ import (
 func deserializeSlice(typ reflect.Type, parts []string) (val reflect.Value, consumed int, err error) {
 	val = reflect.Indirect(reflect.New(typ))
 	typElem := typ.Elem()
-	nParts := len(parts)
 
 	for {
 		// Stop parsing if we ran out of parts
 		// YNO protocol has no slices smaller than
 		// the entire remainder of a message, so
 		// that is the only check we have
-		if consumed == nParts {
+		if consumed == len(parts) {
 			break
 		}
 
@@ -66,14 +65,12 @@ func deserializeAny(typ reflect.Type, parts []string) (val reflect.Value, consum
 		// Instantiate pointer [reflect.Value]
 		typElem := typ.Elem()
 		val = reflect.New(typElem)
-
 		// Deserialize underlying type
 		pVal, pConsumed, pErr := deserializeAny(typElem, parts)
 		if err = pErr; err != nil {
 			return
 		}
 		consumed = pConsumed
-
 		// Set pointer's value to result
 		val.Elem().Set(pVal)
 		return
@@ -168,8 +165,7 @@ func deserializeOne(msgBytes []byte) (msg any, err error) {
 	msg = val.Interface()
 
 	// Check if too many fields were sent
-	nPartsNameless := len(partsNameless)
-	if consumed != nPartsNameless {
+	if consumed != len(partsNameless) {
 		err = errors.New("too many fields sent")
 		return
 	}
