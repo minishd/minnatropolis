@@ -38,6 +38,9 @@ var (
 
 	ErrNotInMap = &Error{400, "not in a map"}
 
+	ErrNoBanned   = &Error{403, "banned account is disallowed"}
+	ErrNoRegister = &Error{403, "registration is disallowed"}
+
 	ErrUnauthorized    = &Error{401, "unauthorized"}
 	ErrTooManyRequests = &Error{429, "too many requests"}
 	ErrNotJSON         = &Error{415, "only json accepted"}

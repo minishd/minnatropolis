@@ -77,20 +77,26 @@ func hasBlocked(source *user.ClientData, subject *user.ClientData) (ok bool) {
 }
 
 // Whether or not we should skip packets about a player.
-func (h *Handler) arePacketsSkippedPlayer(us *user.ClientData, them *user.ClientData) bool {
+func (h *Handler) arePacketsSkippedPlayer(from *user.ClientData, to *user.ClientData) bool {
 	// Is it ourselves? We already know what we sent
-	if us.CID == them.CID {
+	if from.CID == to.CID {
+		return true
+	}
+
+	// Does the subject have a punishment that hides them?
+	if from.Punishment != nil && from.Punishment.DoesMakePlayerInvisible() {
+		// Yes we do
 		return true
 	}
 
 	// Lock blocklists so we can check safely
-	us.BlocklistMu.RLock()
-	them.BlocklistMu.RLock()
-	defer us.BlocklistMu.RUnlock()
-	defer them.BlocklistMu.RUnlock()
+	from.BlocklistMu.RLock()
+	to.BlocklistMu.RLock()
+	defer from.BlocklistMu.RUnlock()
+	defer to.BlocklistMu.RUnlock()
 
-	// Did we block them, or they block us?
-	return hasBlocked(us, them) || hasBlocked(them, us)
+	// Did the receiver block the sender, or the sender block the receiver?
+	return hasBlocked(from, to) || hasBlocked(to, from)
 }
 
 // Send a message to everyone else in the room.
@@ -105,6 +111,8 @@ func (h *Handler) shareToRoom(d *user.ClientData, msgs ...any) {
 	room := h.rooms[d.RoomID]
 	room.RLock()
 	for _, m := range room.members {
+		// Here we're the "from" because the packet
+		// is about us
 		if h.arePacketsSkippedPlayer(d, m.GetData()) {
 			continue
 		}
@@ -149,7 +157,9 @@ func (h *Handler) changeRoom(u *user.User, newID int32) {
 		room.RLock()
 		for _, m := range room.members {
 			md := m.GetData()
-			if h.arePacketsSkippedPlayer(d, md) {
+			// Here the member is the "from" because
+			// the packet is about them
+			if h.arePacketsSkippedPlayer(md, d) {
 				continue
 			}
 			introMsgs = append(introMsgs, md.GetIntroMessages()...)

@@ -88,9 +88,9 @@ func AddRoutes(
 	partiesMux := http.NewServeMux()
 	ph := parties.NewHandlers(ds, ch)
 	partiesMux.Handle("GET /me", web.RequireAuth(ds, ph.HandleMe))
-	partiesMux.Handle("POST /create", web.RequireAuth(ds, ph.HandleCreate))
-	partiesMux.Handle("POST /join", web.RequireAuth(ds, ph.HandleJoin))
-	partiesMux.Handle("POST /leave", web.RequireAuth(ds, ph.HandleLeave))
+	partiesMux.Handle("POST /create", web.RequireAuthUnbanned(ds, ph.HandleCreate))
+	partiesMux.Handle("POST /join", web.RequireAuthUnbanned(ds, ph.HandleJoin))
+	partiesMux.Handle("POST /leave", web.RequireAuthUnbanned(ds, ph.HandleLeave))
 
 	// Set routes
 	mux.Handle("GET /room", roomLimiter.Check(func(w http.ResponseWriter, r *http.Request) error {

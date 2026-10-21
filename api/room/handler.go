@@ -80,6 +80,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	accountUUID := uuid.New()
 	loggedIn := false
 	blocklist := make(map[uuid.UUID]struct{})
+	var punishment *datastore.Punishment
 
 	// Look up token, if present
 	st, err := web.GetAuth(h.ds, r)
@@ -94,6 +95,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		username = st.ForUser.Username
 		accountUUID = st.ForUser.ID
 		loggedIn = true
+		punishment = st.ForUser.CurrentPunishment
 
 		// Also look up blocklist
 		ctx := r.Context()
@@ -116,7 +118,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	}
 
 	// Set up data
-	user.InitData(session, h.cIDCounter.Add(1), username, roomID, accountUUID, loggedIn, blocklist)
+	user.InitData(session, h.cIDCounter.Add(1), username, roomID, accountUUID, loggedIn, blocklist, punishment)
 
 	// Authorize connection
 	return true

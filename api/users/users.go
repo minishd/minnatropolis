@@ -22,16 +22,35 @@ func NewHandlers(ds *datastore.DataStore, rh *room.Handler, ch *chat.Handler) *H
 }
 
 func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	type punishmentType string
+	type punishmentInfo struct {
+		StartedAt time.Time
+		EndsAt    *time.Time
+		Type      punishmentType
+		Reason    string
+	}
 	type meRes struct {
-		AccountID uuid.UUID
-		Username  string
-		CreatedAt time.Time
+		AccountID  uuid.UUID
+		Username   string
+		CreatedAt  time.Time
+		Punishment *punishmentInfo
+	}
+
+	var punishInfo *punishmentInfo
+	if punish := session.ForUser.CurrentPunishment; punish != nil && !punish.IsHidden() {
+		punishInfo = &punishmentInfo{
+			StartedAt: punish.CreatedAt,
+			EndsAt:    punish.ExpiresAt,
+			Type:      punishmentType(punish.PunishmentType),
+			Reason:    punish.Reason,
+		}
 	}
 
 	web.SendResOK(w, meRes{
-		AccountID: session.ForUser.ID,
-		Username:  session.ForUser.Username,
-		CreatedAt: session.ForUser.CreatedAt,
+		AccountID:  session.ForUser.ID,
+		Username:   session.ForUser.Username,
+		CreatedAt:  session.ForUser.CreatedAt,
+		Punishment: punishInfo,
 	})
 	return
 }

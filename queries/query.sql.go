@@ -7,6 +7,7 @@ package queries
 
 import (
 	"context"
+	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,19 +43,25 @@ func (q *Queries) CreateParty(ctx context.Context, name string) (Party, error) {
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (username, pw_hash_type, pw_hash)
-VALUES ($1, $2, $3)
-RETURNING id, created_at, username, pw_hash_type, pw_hash
+INSERT INTO users (username, pw_hash_type, pw_hash, current_punishment)
+VALUES ($1, $2, $3, $4)
+RETURNING id, created_at, username, pw_hash_type, pw_hash, last_seen_ip, mod_note, current_punishment, role
 `
 
 type CreateUserParams struct {
-	Username   string
-	PwHashType PwHashTypeT
-	PwHash     string
+	Username          string
+	PwHashType        PwHashTypeT
+	PwHash            string
+	CurrentPunishment *uuid.UUID
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Username, arg.PwHashType, arg.PwHash)
+	row := q.db.QueryRow(ctx, createUser,
+		arg.Username,
+		arg.PwHashType,
+		arg.PwHash,
+		arg.CurrentPunishment,
+	)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -62,6 +69,10 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Username,
 		&i.PwHashType,
 		&i.PwHash,
+		&i.LastSeenIp,
+		&i.ModNote,
+		&i.CurrentPunishment,
+		&i.Role,
 	)
 	return i, err
 }
@@ -125,31 +136,91 @@ func (q *Queries) DeleteSessionToken(ctx context.Context, id uuid.UUID) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const getActivePunishmentForIP = `-- name: GetActivePunishmentForIP :one
+SELECT p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason FROM punishments p
+JOIN punishment_ips pi ON pi.punishment = p.id
+WHERE pi.ip = $1
+  AND p.is_disabled IS FALSE
+  AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+`
+
+func (q *Queries) GetActivePunishmentForIP(ctx context.Context, ip netip.Addr) (Punishment, error) {
+	row := q.db.QueryRow(ctx, getActivePunishmentForIP, ip)
+	var i Punishment
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.PunishmentType,
+		&i.IsIpEnforced,
+		&i.IsDisabled,
+		&i.ExpiresAt,
+		&i.Reason,
+	)
+	return i, err
+}
+
 const getPartyMembers = `-- name: GetPartyMembers :many
-SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash
+SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
 FROM party_members pm
-JOIN users u ON u.id = pm.member_user
-WHERE party = $1
+     JOIN users u       ON u.id = pm.member_user
+LEFT JOIN punishments p ON p.id = u.current_punishment
+                       AND p.is_disabled IS FALSE
+                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+WHERE pm.party = $1
 ORDER BY pm.created_at
 `
 
-func (q *Queries) GetPartyMembers(ctx context.Context, party uuid.UUID) ([]User, error) {
+type GetPartyMembersRow struct {
+	User       User
+	Punishment *Punishment
+}
+
+func (q *Queries) GetPartyMembers(ctx context.Context, party uuid.UUID) ([]GetPartyMembersRow, error) {
 	rows, err := q.db.Query(ctx, getPartyMembers, party)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []User
+	var items []GetPartyMembersRow
 	for rows.Next() {
-		var i User
+		var i GetPartyMembersRow
+		var nembedPunishmentID *uuid.UUID
+		var nembedPunishmentCreatedAt *time.Time
+		var nembedPunishmentPunishmentType *PunishmentTypeT
+		var nembedPunishmentIsIpEnforced *bool
+		var nembedPunishmentIsDisabled *bool
+		var nembedPunishmentExpiresAt *time.Time
+		var nembedPunishmentReason *string
 		if err := rows.Scan(
-			&i.ID,
-			&i.CreatedAt,
-			&i.Username,
-			&i.PwHashType,
-			&i.PwHash,
+			&i.User.ID,
+			&i.User.CreatedAt,
+			&i.User.Username,
+			&i.User.PwHashType,
+			&i.User.PwHash,
+			&i.User.LastSeenIp,
+			&i.User.ModNote,
+			&i.User.CurrentPunishment,
+			&i.User.Role,
+			&nembedPunishmentID,
+			&nembedPunishmentCreatedAt,
+			&nembedPunishmentPunishmentType,
+			&nembedPunishmentIsIpEnforced,
+			&nembedPunishmentIsDisabled,
+			&nembedPunishmentExpiresAt,
+			&nembedPunishmentReason,
 		); err != nil {
 			return nil, err
+		}
+		if nembedPunishmentID != nil || nembedPunishmentCreatedAt != nil || nembedPunishmentPunishmentType != nil || nembedPunishmentIsIpEnforced != nil || nembedPunishmentIsDisabled != nil || nembedPunishmentExpiresAt != nil || nembedPunishmentReason != nil {
+			i.Punishment = &Punishment{
+				ID:             *nembedPunishmentID,
+				CreatedAt:      *nembedPunishmentCreatedAt,
+				PunishmentType: *nembedPunishmentPunishmentType,
+				IsIpEnforced:   *nembedPunishmentIsIpEnforced,
+				IsDisabled:     *nembedPunishmentIsDisabled,
+				ExpiresAt:      nembedPunishmentExpiresAt,
+				Reason:         *nembedPunishmentReason,
+			}
 		}
 		items = append(items, i)
 	}
@@ -160,29 +231,66 @@ func (q *Queries) GetPartyMembers(ctx context.Context, party uuid.UUID) ([]User,
 }
 
 const getUserBlockList = `-- name: GetUserBlockList :many
-SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash
+SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
 FROM block_relations br
-JOIN users u ON u.id = br.blocked_user
-WHERE origin_user = $1
+     JOIN users u       ON u.id = br.blocked_user
+LEFT JOIN punishments p ON p.id = u.current_punishment
+                       AND p.is_disabled IS FALSE
+                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+WHERE br.origin_user = $1
 `
 
-func (q *Queries) GetUserBlockList(ctx context.Context, originUser uuid.UUID) ([]User, error) {
+type GetUserBlockListRow struct {
+	User       User
+	Punishment *Punishment
+}
+
+func (q *Queries) GetUserBlockList(ctx context.Context, originUser uuid.UUID) ([]GetUserBlockListRow, error) {
 	rows, err := q.db.Query(ctx, getUserBlockList, originUser)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []User
+	var items []GetUserBlockListRow
 	for rows.Next() {
-		var i User
+		var i GetUserBlockListRow
+		var nembedPunishmentID *uuid.UUID
+		var nembedPunishmentCreatedAt *time.Time
+		var nembedPunishmentPunishmentType *PunishmentTypeT
+		var nembedPunishmentIsIpEnforced *bool
+		var nembedPunishmentIsDisabled *bool
+		var nembedPunishmentExpiresAt *time.Time
+		var nembedPunishmentReason *string
 		if err := rows.Scan(
-			&i.ID,
-			&i.CreatedAt,
-			&i.Username,
-			&i.PwHashType,
-			&i.PwHash,
+			&i.User.ID,
+			&i.User.CreatedAt,
+			&i.User.Username,
+			&i.User.PwHashType,
+			&i.User.PwHash,
+			&i.User.LastSeenIp,
+			&i.User.ModNote,
+			&i.User.CurrentPunishment,
+			&i.User.Role,
+			&nembedPunishmentID,
+			&nembedPunishmentCreatedAt,
+			&nembedPunishmentPunishmentType,
+			&nembedPunishmentIsIpEnforced,
+			&nembedPunishmentIsDisabled,
+			&nembedPunishmentExpiresAt,
+			&nembedPunishmentReason,
 		); err != nil {
 			return nil, err
+		}
+		if nembedPunishmentID != nil || nembedPunishmentCreatedAt != nil || nembedPunishmentPunishmentType != nil || nembedPunishmentIsIpEnforced != nil || nembedPunishmentIsDisabled != nil || nembedPunishmentExpiresAt != nil || nembedPunishmentReason != nil {
+			i.Punishment = &Punishment{
+				ID:             *nembedPunishmentID,
+				CreatedAt:      *nembedPunishmentCreatedAt,
+				PunishmentType: *nembedPunishmentPunishmentType,
+				IsIpEnforced:   *nembedPunishmentIsIpEnforced,
+				IsDisabled:     *nembedPunishmentIsDisabled,
+				ExpiresAt:      nembedPunishmentExpiresAt,
+				Reason:         *nembedPunishmentReason,
+			}
 		}
 		items = append(items, i)
 	}
@@ -193,20 +301,58 @@ func (q *Queries) GetUserBlockList(ctx context.Context, originUser uuid.UUID) ([
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT id, created_at, username, pw_hash_type, pw_hash FROM users
-WHERE username = $1
+SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
+FROM users u
+LEFT JOIN punishments p ON p.id = u.current_punishment
+                       AND p.is_disabled IS FALSE
+                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+WHERE u.username = $1
 `
 
-func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
+type GetUserByUsernameRow struct {
+	User       User
+	Punishment *Punishment
+}
+
+func (q *Queries) GetUserByUsername(ctx context.Context, username string) (GetUserByUsernameRow, error) {
 	row := q.db.QueryRow(ctx, getUserByUsername, username)
-	var i User
+	var i GetUserByUsernameRow
+	var nembedPunishmentID *uuid.UUID
+	var nembedPunishmentCreatedAt *time.Time
+	var nembedPunishmentPunishmentType *PunishmentTypeT
+	var nembedPunishmentIsIpEnforced *bool
+	var nembedPunishmentIsDisabled *bool
+	var nembedPunishmentExpiresAt *time.Time
+	var nembedPunishmentReason *string
 	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.Username,
-		&i.PwHashType,
-		&i.PwHash,
+		&i.User.ID,
+		&i.User.CreatedAt,
+		&i.User.Username,
+		&i.User.PwHashType,
+		&i.User.PwHash,
+		&i.User.LastSeenIp,
+		&i.User.ModNote,
+		&i.User.CurrentPunishment,
+		&i.User.Role,
+		&nembedPunishmentID,
+		&nembedPunishmentCreatedAt,
+		&nembedPunishmentPunishmentType,
+		&nembedPunishmentIsIpEnforced,
+		&nembedPunishmentIsDisabled,
+		&nembedPunishmentExpiresAt,
+		&nembedPunishmentReason,
 	)
+	if nembedPunishmentID != nil || nembedPunishmentCreatedAt != nil || nembedPunishmentPunishmentType != nil || nembedPunishmentIsIpEnforced != nil || nembedPunishmentIsDisabled != nil || nembedPunishmentExpiresAt != nil || nembedPunishmentReason != nil {
+		i.Punishment = &Punishment{
+			ID:             *nembedPunishmentID,
+			CreatedAt:      *nembedPunishmentCreatedAt,
+			PunishmentType: *nembedPunishmentPunishmentType,
+			IsIpEnforced:   *nembedPunishmentIsIpEnforced,
+			IsDisabled:     *nembedPunishmentIsDisabled,
+			ExpiresAt:      nembedPunishmentExpiresAt,
+			Reason:         *nembedPunishmentReason,
+		}
+	}
 	return i, err
 }
 
@@ -214,7 +360,7 @@ const getUserParty = `-- name: GetUserParty :one
 SELECT p.id, p.created_at, p.name
 FROM party_members pm
 JOIN parties p ON p.id = pm.party
-WHERE member_user = $1
+WHERE pm.member_user = $1
 `
 
 func (q *Queries) GetUserParty(ctx context.Context, memberUser uuid.UUID) (Party, error) {
@@ -270,47 +416,67 @@ func (q *Queries) InsertSessionToken(ctx context.Context, arg InsertSessionToken
 	return err
 }
 
-const lookupSessionTokenWithUser = `-- name: LookupSessionTokenWithUser :one
-SELECT st.id, st.created_at, st.for_user, st.token, st.expires_at,
-    u.id AS user_id,
-    u.created_at AS user_created_at,
-    u.username AS user_username,
-    u.pw_hash_type AS user_pw_hash_type,
-    u.pw_hash AS user_pw_hash
+const lookupSessionToken = `-- name: LookupSessionToken :one
+SELECT st.id, st.created_at, st.for_user, st.token, st.expires_at, u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
 FROM session_tokens st
-JOIN users u ON u.id = st.for_user
-WHERE token = $1
-  AND expires_at > CURRENT_TIMESTAMP
+     JOIN users u       ON u.id = st.for_user
+LEFT JOIN punishments p ON p.id = u.current_punishment
+                       AND p.is_disabled IS FALSE
+                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+WHERE st.token = $1
+  AND st.expires_at > CURRENT_TIMESTAMP
 `
 
-type LookupSessionTokenWithUserRow struct {
-	ID             uuid.UUID
-	CreatedAt      time.Time
-	ForUser        uuid.UUID
-	Token          string
-	ExpiresAt      time.Time
-	UserID         uuid.UUID
-	UserCreatedAt  time.Time
-	UserUsername   string
-	UserPwHashType PwHashTypeT
-	UserPwHash     string
+type LookupSessionTokenRow struct {
+	SessionToken SessionToken
+	User         User
+	Punishment   *Punishment
 }
 
-func (q *Queries) LookupSessionTokenWithUser(ctx context.Context, token string) (LookupSessionTokenWithUserRow, error) {
-	row := q.db.QueryRow(ctx, lookupSessionTokenWithUser, token)
-	var i LookupSessionTokenWithUserRow
+func (q *Queries) LookupSessionToken(ctx context.Context, token string) (LookupSessionTokenRow, error) {
+	row := q.db.QueryRow(ctx, lookupSessionToken, token)
+	var i LookupSessionTokenRow
+	var nembedPunishmentID *uuid.UUID
+	var nembedPunishmentCreatedAt *time.Time
+	var nembedPunishmentPunishmentType *PunishmentTypeT
+	var nembedPunishmentIsIpEnforced *bool
+	var nembedPunishmentIsDisabled *bool
+	var nembedPunishmentExpiresAt *time.Time
+	var nembedPunishmentReason *string
 	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.ForUser,
-		&i.Token,
-		&i.ExpiresAt,
-		&i.UserID,
-		&i.UserCreatedAt,
-		&i.UserUsername,
-		&i.UserPwHashType,
-		&i.UserPwHash,
+		&i.SessionToken.ID,
+		&i.SessionToken.CreatedAt,
+		&i.SessionToken.ForUser,
+		&i.SessionToken.Token,
+		&i.SessionToken.ExpiresAt,
+		&i.User.ID,
+		&i.User.CreatedAt,
+		&i.User.Username,
+		&i.User.PwHashType,
+		&i.User.PwHash,
+		&i.User.LastSeenIp,
+		&i.User.ModNote,
+		&i.User.CurrentPunishment,
+		&i.User.Role,
+		&nembedPunishmentID,
+		&nembedPunishmentCreatedAt,
+		&nembedPunishmentPunishmentType,
+		&nembedPunishmentIsIpEnforced,
+		&nembedPunishmentIsDisabled,
+		&nembedPunishmentExpiresAt,
+		&nembedPunishmentReason,
 	)
+	if nembedPunishmentID != nil || nembedPunishmentCreatedAt != nil || nembedPunishmentPunishmentType != nil || nembedPunishmentIsIpEnforced != nil || nembedPunishmentIsDisabled != nil || nembedPunishmentExpiresAt != nil || nembedPunishmentReason != nil {
+		i.Punishment = &Punishment{
+			ID:             *nembedPunishmentID,
+			CreatedAt:      *nembedPunishmentCreatedAt,
+			PunishmentType: *nembedPunishmentPunishmentType,
+			IsIpEnforced:   *nembedPunishmentIsIpEnforced,
+			IsDisabled:     *nembedPunishmentIsDisabled,
+			ExpiresAt:      nembedPunishmentExpiresAt,
+			Reason:         *nembedPunishmentReason,
+		}
+	}
 	return i, err
 }
 

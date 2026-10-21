@@ -1,7 +1,6 @@
 package web
 
 import (
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -58,7 +57,7 @@ func (l *Limiter) getOrCreate(ip string) *rate.Limiter {
 }
 
 // Drops callers we haven't heard from in a while.
-// (Called in [limiter.sweepLoop])
+// (Called in [Limiter.sweepLoop])
 func (l *Limiter) sweep() {
 	l.mut.Lock()
 	defer l.mut.Unlock()
@@ -71,7 +70,7 @@ func (l *Limiter) sweep() {
 }
 
 // Sweeps on a ticker for the life of the process.
-// (meant to be started using the go statement in [newLimiter])
+// (meant to be started using the go statement in [NewLimiter])
 func (l *Limiter) sweepLoop() {
 	ticker := time.NewTicker(rateLimitSweepEvery)
 	defer ticker.Stop()
@@ -83,13 +82,9 @@ func (l *Limiter) sweepLoop() {
 
 // Middleware that caps how often a single IP can hit an endpoint.
 // Answers with [ErrTooManyRequests] once their bucket runs dry.
-func (l *Limiter) Check(next handleError) handleError {
+func (l *Limiter) Check(next fallibleHandler) fallibleHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			host = "unknown"
-		}
-
+		host := GetIP(r).String()
 		rateLimiter := l.getOrCreate(host)
 		if !rateLimiter.Allow() {
 			return ErrTooManyRequests

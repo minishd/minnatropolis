@@ -64,6 +64,21 @@ func (h *Handlers) HandleRegister(w http.ResponseWriter, r *http.Request) (err e
 		Password string `validate:"required,min=8,max=128"`
 	}
 
+	// Look up punishment for this IP
+	ctx := r.Context()
+	ip := web.GetIP(r)
+	punishment, err := h.ds.GetActivePunishmentForIP(ctx, ip)
+	if err != nil {
+		return
+	}
+
+	// If they're not allowed to register an account
+	// don't let them
+	if punishment != nil && punishment.DoesBlockRegistration() {
+		err = web.ErrNoRegister
+		return
+	}
+
 	// Parse request
 	req, err := web.ParseReq[registerReq](r)
 	if err != nil {
@@ -82,9 +97,14 @@ func (h *Handlers) HandleRegister(w http.ResponseWriter, r *http.Request) (err e
 		return
 	}
 
+	// Extract ID of punishment if there is one
+	var currentPunishID *uuid.UUID
+	if punishment != nil {
+		currentPunishID = &punishment.ID
+	}
+
 	// Try to create in DB
-	ctx := r.Context()
-	user, err := h.ds.CreateUser(ctx, req.Username, pwHash, datastore.PhtArgon2id)
+	user, err := h.ds.CreateUser(ctx, req.Username, pwHash, datastore.PwHashArgon2id, currentPunishID)
 	if err == datastore.ErrNotUnique {
 		err = web.ErrUsernameTaken
 		return

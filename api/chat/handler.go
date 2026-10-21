@@ -83,6 +83,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		limiter:     rate.NewLimiter(rate.Every(sendRateLimitEvery), sendRateLimitBurst),
 		blocklist:   blocklist,
 		partyID:     partyID,
+		punishment:  st.ForUser.CurrentPunishment,
 	})
 
 	// Authorize connection

@@ -10,18 +10,10 @@ import (
 	"github.com/minishd/minnatropolis/textfilter"
 )
 
-// another filter config idea
-type textFilterPhrases struct {
-	Fuzzy   []string
-	Regexes []string
-}
-
 type textFilterCategory struct {
 	Standins map[string][]string
 	Strings  []string
 	Words    []string
-	// add regexes here after
-	// or make it so both strings and words can use regex
 }
 
 var (
@@ -76,9 +68,6 @@ func initTextFilter(cat *textFilterCategory) (*textfilter.TextFilter, error) {
 			standins[realR] = append(standins[realR], fakeR)
 		}
 	}
-
-	// Maybe, check for uppercase letters
-	// or duplicate words?
 
 	// Then, construct the [textfilter.TextFilter]
 	return textfilter.New(standins, cat.Strings, cat.Words), nil

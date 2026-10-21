@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/netip"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/minishd/minnatropolis/datastore"
@@ -41,6 +42,26 @@ func SetAuthCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, cookie)
 }
 
+// Reads the IP of a request
+func GetIP(r *http.Request) netip.Addr {
+	// First, try x-forwarded-for header
+	xff := r.Header.Get("x-forwarded-for")
+	addr, err := netip.ParseAddr(xff)
+	if err == nil {
+		return addr
+	}
+
+	// If that doesn't work, use connection IP
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		log.Println("couldn't read IP from request", err)
+		return netip.IPv4Unspecified()
+	}
+
+	// That worked, return the connection IP
+	return ap.Addr()
+}
+
 // Reads and looks up a provided session token
 func GetAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionToken, err error) {
 	// Read token from cookie
@@ -66,21 +87,6 @@ func GetAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionTok
 	}
 
 	return
-}
-
-// Session handler wrapper for authentication
-func RequireAuth(ds *datastore.DataStore, next sessionHandler) handleError {
-	return func(w http.ResponseWriter, r *http.Request) (err error) {
-		session, err := GetAuth(ds, r)
-		if err != nil {
-			return
-		}
-		if session == nil {
-			return ErrUnauthorized
-		}
-
-		return next(w, r, session)
-	}
 }
 
 // Parses the body of a request from JSON
@@ -137,43 +143,4 @@ func SendRes[Res any](w http.ResponseWriter, status int, res Res) (err error) {
 // Send back a JSON response with status `200 OK`
 func SendResOK[Res any](w http.ResponseWriter, res Res) error {
 	return SendRes(w, http.StatusOK, res)
-}
-
-// Request handler that additionally receives the
-// session of the user that sent the request
-type sessionHandler func(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error)
-
-// Middleware that catches errors, conditionally logs,
-// and sends back an appropriate HTTP response
-//
-// Also kind of wraps an error-returning handler into a normal [http.Handler],
-// which can then be chained with other middlewares
-type handleError func(w http.ResponseWriter, r *http.Request) (err error)
-
-// Response type that is sent back to the client
-// if their request didn't succeed
-type errorRes struct {
-	Error string
-}
-
-func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Call req. handler
-	if err := handler(w, r); err != nil {
-		// An error was returned
-		// See if it's an [Error],
-		// werr wrote down status codes and error messages
-		// for those that werr want to return
-		werr, ok := errors.AsType[*Error](err)
-		if !ok {
-			// We could not cast it to an [Error]
-			// Log it, and fall back to generic "server error" message
-			log.Println("handler raised error:", err)
-			werr = ErrServerInternal
-		}
-
-		// Set status code & send back error response
-		if err := SendRes(w, werr.Status, errorRes{werr.Note}); err != nil {
-			log.Println("couldn't send error response:", err)
-		}
-	}
 }

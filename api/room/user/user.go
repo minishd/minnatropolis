@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
+	"github.com/minishd/minnatropolis/datastore"
 )
 
 const (
@@ -64,6 +65,7 @@ type ClientData struct {
 	outbox chan []any
 
 	AccountUUID uuid.UUID
+	Punishment  *datastore.Punishment
 	Rank        int32
 	LoggedIn    bool
 	Badge       string
@@ -94,6 +96,7 @@ type ClientData struct {
 func InitData(
 	session gws.SessionStorage, cID int32, username string, roomID int32,
 	accountUUID uuid.UUID, loggedIn bool, blocklist map[uuid.UUID]struct{},
+	punishment *datastore.Punishment,
 ) {
 	// Make guard key
 	guardKey := rand.Uint32()
@@ -111,6 +114,7 @@ func InitData(
 		Name:          username,
 		outbox:        outbox,
 		AccountUUID:   accountUUID,
+		Punishment:    punishment,
 		LoggedIn:      loggedIn,
 		Blocklist:     blocklist,
 		GuardKey:      guardKey,
