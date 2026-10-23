@@ -28,13 +28,33 @@ const (
 	RoleAdministrator        Role = Role(queries.RoleTAdministrator)
 )
 
-// We shouldn't be getting invalid hash type
-// enum values from the DB,
-// and the DB shouldn't let us give it
-// invalid enum values
-// So just casting should be okay?
-// I still think having functions to
-// make intent clear is good though
+type PermissionLevel = int
+
+const (
+	PermissionLevelNone = iota
+	PermissionLevelModerator
+	PermissionLevelAdministrator
+)
+
+// Get the permission level of a role.
+// Permission level is used to check if somebody has
+// "at least" a role with a certain amount of privilege.
+func (r Role) PermissionLevel() int {
+	switch r {
+	case RoleModerator:
+		return PermissionLevelModerator
+	case RoleAdministrator:
+		return PermissionLevelAdministrator
+	default:
+		return PermissionLevelNone
+	}
+}
+
+// We have helper functions for converting enums
+// because it's possible that database enums are changed
+// but not the corresponding enum in the program
+// The database won't let us supply unrecognised enum values
+// though so the inverse is not true
 
 func dbPwHashTypeToApp(dbPHT queries.PwHashTypeT) PwHashType {
 	pht := PwHashType(dbPHT)

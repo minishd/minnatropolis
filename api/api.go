@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/lxzan/gws"
+	"github.com/minishd/minnatropolis/api/admin"
 	"github.com/minishd/minnatropolis/api/auth"
 	"github.com/minishd/minnatropolis/api/chat"
 	"github.com/minishd/minnatropolis/api/parties"
@@ -31,6 +32,17 @@ const (
 
 	chatMaxMessageSize = 4 * 1024
 )
+
+func wsUpgrader(upgrader *gws.Upgrader) web.FallibleHandler {
+	return func(w http.ResponseWriter, r *http.Request) error {
+		socket, err := upgrader.Upgrade(w, r)
+		if err != nil {
+			return nil
+		}
+		go socket.ReadLoop()
+		return nil
+	}
+}
 
 func AddRoutes(
 	mux *http.ServeMux, rh *room.Handler, ch *chat.Handler,
@@ -60,9 +72,11 @@ func AddRoutes(
 		Authorize: ch.Authorize,
 	})
 
-	// Set routes (auth)
-	authMux := http.NewServeMux()
-	ah := auth.NewHandlers(ds, tfUsernames)
+	// Set up API handlers
+	authH := auth.NewHandlers(ds, tfUsernames)
+	usersH := users.NewHandlers(ds, rh, ch)
+	partiesH := parties.NewHandlers(ds, ch)
+	adminH := admin.NewHandlers(ds, rh, ch)
 
 	// Set limits (rate limiting)
 	registerLimiter := web.NewLimiter(rate.Every(registerRateLimitEvery), registerRateLimitBurst)
@@ -70,48 +84,40 @@ func AddRoutes(
 	roomLimiter := web.NewLimiter(rate.Every(roomRateLimitEvery), roomRateLimitBurst)
 	chatLimiter := web.NewLimiter(rate.Every(chatRateLimitEvery), chatRateLimitBurst)
 
-	authMux.Handle("POST /register", registerLimiter.Check(ah.HandleRegister))
-	authMux.Handle("POST /login", loginLimiter.Check(ah.HandleLogin))
-	authMux.Handle("POST /logout", web.RequireAuth(ds, ah.HandleLogout))
-	authMux.Handle("POST /logout-others", web.RequireAuth(ds, ah.HandleLogoutOthers))
-	authMux.Handle("POST /renew", web.RequireAuth(ds, ah.HandleRenew))
+	// Set routes (auth)
+	authMux := http.NewServeMux()
+	authMux.Handle("POST /register", registerLimiter.Check(authH.HandleRegister))
+	authMux.Handle("POST /login", loginLimiter.Check(authH.HandleLogin))
+	authMux.Handle("POST /logout", web.RequireAuth(ds, authH.HandleLogout))
+	authMux.Handle("POST /logout-others", web.RequireAuth(ds, authH.HandleLogoutOthers))
+	authMux.Handle("POST /renew", web.RequireAuth(ds, authH.HandleRenew))
 
 	// Set routes (users)
 	usersMux := http.NewServeMux()
-	uh := users.NewHandlers(ds, rh, ch)
-	usersMux.Handle("GET /me", web.RequireAuth(ds, uh.HandleMe))
-	usersMux.Handle("GET /blocklist", web.RequireAuth(ds, uh.HandleBlockList))
-	usersMux.Handle("POST /blocklist", web.RequireAuth(ds, uh.HandleBlockListAdd))
-	usersMux.Handle("DELETE /blocklist", web.RequireAuth(ds, uh.HandleBlockListRemove))
+	usersMux.Handle("GET /me", web.RequireAuth(ds, usersH.HandleMe))
+	usersMux.Handle("GET /blocklist", web.RequireAuth(ds, usersH.HandleBlockList))
+	usersMux.Handle("POST /blocklist", web.RequireAuth(ds, usersH.HandleBlockListAdd))
+	usersMux.Handle("DELETE /blocklist", web.RequireAuth(ds, usersH.HandleBlockListRemove))
 
 	// Set routes (parties)
 	partiesMux := http.NewServeMux()
-	ph := parties.NewHandlers(ds, ch)
-	partiesMux.Handle("GET /me", web.RequireAuth(ds, ph.HandleMe))
-	partiesMux.Handle("POST /create", web.RequireAuthUnbanned(ds, ph.HandleCreate))
-	partiesMux.Handle("POST /join", web.RequireAuthUnbanned(ds, ph.HandleJoin))
-	partiesMux.Handle("POST /leave", web.RequireAuthUnbanned(ds, ph.HandleLeave))
+	partiesMux.Handle("GET /me", web.RequireAuth(ds, partiesH.HandleMe))
+	partiesMux.Handle("POST /create", web.RequireAuthUnbanned(ds, partiesH.HandleCreate))
+	partiesMux.Handle("POST /join", web.RequireAuthUnbanned(ds, partiesH.HandleJoin))
+	partiesMux.Handle("POST /leave", web.RequireAuthUnbanned(ds, partiesH.HandleLeave))
+
+	// Set routes (admin)
+	adminMux := http.NewServeMux()
+	adminMux.Handle("GET /hi-admin", web.RequireAuthAdministrator(ds, adminH.HandleHiAdmin))
+	adminMux.Handle("GET /hi-mod", web.RequireAuthModerator(ds, adminH.HandleHiModerator))
 
 	// Set routes
-	mux.Handle("GET /room", roomLimiter.Check(func(w http.ResponseWriter, r *http.Request) error {
-		socket, err := roomUpgrader.Upgrade(w, r)
-		if err != nil {
-			return nil
-		}
-		go socket.ReadLoop()
-		return nil
-	}))
-	mux.Handle("GET /chat", chatLimiter.Check(func(w http.ResponseWriter, r *http.Request) error {
-		socket, err := chatUpgrader.Upgrade(w, r)
-		if err != nil {
-			return nil
-		}
-		go socket.ReadLoop()
-		return nil
-	}))
+	mux.Handle("GET /room", roomLimiter.Check(wsUpgrader(roomUpgrader)))
+	mux.Handle("GET /chat", chatLimiter.Check(wsUpgrader(chatUpgrader)))
 	mux.Handle("/auth/", http.StripPrefix("/auth", authMux))
 	mux.Handle("/users/", http.StripPrefix("/users", usersMux))
 	mux.Handle("/parties/", http.StripPrefix("/parties", partiesMux))
+	mux.Handle("/admin/", http.StripPrefix("/admin", adminMux))
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("api unconscious"))
 	})

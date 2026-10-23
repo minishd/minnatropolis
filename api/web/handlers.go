@@ -13,9 +13,9 @@ import (
 //
 // Also kind of wraps an error-returning handler into a normal [http.Handler],
 // which can then be chained with other middlewares
-type fallibleHandler func(w http.ResponseWriter, r *http.Request) (err error)
+type FallibleHandler func(w http.ResponseWriter, r *http.Request) (err error)
 
-func (handler fallibleHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (handler FallibleHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Response type that is sent back to the client
 	// if their request didn't succeed
 	type errorRes struct {
@@ -45,11 +45,13 @@ func (handler fallibleHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 // Request handler that additionally receives the
 // session of the user that sent the request
-type sessionHandler func(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error)
+type SessionHandler func(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error)
 
 // Session handler wrapper for authentication,
-// optionally barring banned users
-func requireAuth(ds *datastore.DataStore, allowBanned bool, next sessionHandler) fallibleHandler {
+// with extra requirements exposed
+func requireAuth(ds *datastore.DataStore, next SessionHandler,
+	allowBanned bool, minPermLevel datastore.PermissionLevel,
+) FallibleHandler {
 	return func(w http.ResponseWriter, r *http.Request) (err error) {
 		session, err := GetAuth(ds, r)
 		if err != nil {
@@ -65,16 +67,31 @@ func requireAuth(ds *datastore.DataStore, allowBanned bool, next sessionHandler)
 			return ErrNoBanned
 		}
 
+		// Make sure they have a high enough permission level
+		if session.ForUser.Role.PermissionLevel() < minPermLevel {
+			return ErrNoPermission
+		}
+
 		return next(w, r, session)
 	}
 }
 
+// Session handler wrapper for authentication, requiring moderator permission
+func RequireAuthModerator(ds *datastore.DataStore, next SessionHandler) FallibleHandler {
+	return requireAuth(ds, next, false, datastore.PermissionLevelModerator)
+}
+
+// Session handler wrapper for authentication, requiring moderator permission
+func RequireAuthAdministrator(ds *datastore.DataStore, next SessionHandler) FallibleHandler {
+	return requireAuth(ds, next, false, datastore.PermissionLevelAdministrator)
+}
+
 // Session handler wrapper for authentication, barring banned users
-func RequireAuthUnbanned(ds *datastore.DataStore, next sessionHandler) fallibleHandler {
-	return requireAuth(ds, false, next)
+func RequireAuthUnbanned(ds *datastore.DataStore, next SessionHandler) FallibleHandler {
+	return requireAuth(ds, next, false, datastore.PermissionLevelNone)
 }
 
 // Session handler wrapper for authentication
-func RequireAuth(ds *datastore.DataStore, next sessionHandler) fallibleHandler {
-	return requireAuth(ds, true, next)
+func RequireAuth(ds *datastore.DataStore, next SessionHandler) FallibleHandler {
+	return requireAuth(ds, next, true, datastore.PermissionLevelNone)
 }

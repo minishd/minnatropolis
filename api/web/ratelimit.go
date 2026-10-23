@@ -82,7 +82,7 @@ func (l *Limiter) sweepLoop() {
 
 // Middleware that caps how often a single IP can hit an endpoint.
 // Answers with [ErrTooManyRequests] once their bucket runs dry.
-func (l *Limiter) Check(next fallibleHandler) fallibleHandler {
+func (l *Limiter) Check(next FallibleHandler) FallibleHandler {
 	return func(w http.ResponseWriter, r *http.Request) error {
 		host := GetIP(r).String()
 		rateLimiter := l.getOrCreate(host)
