@@ -108,6 +108,7 @@ func AddRoutes(
 
 	// Set routes (admin)
 	adminMux := http.NewServeMux()
+	adminMux.Handle("GET /users", web.RequireAuthModerator(ds, adminH.HandleSearchUsers))
 	adminMux.Handle("GET /hi-admin", web.RequireAuthAdministrator(ds, adminH.HandleHiAdmin))
 	adminMux.Handle("GET /hi-mod", web.RequireAuthModerator(ds, adminH.HandleHiModerator))
 

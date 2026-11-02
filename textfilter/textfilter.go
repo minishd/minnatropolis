@@ -10,7 +10,7 @@ type TextFilter struct {
 	wordLayer   *stringFilter
 }
 
-func New(standins map[rune][]rune, strings []string, words []string) *TextFilter {
+func New(standins map[rune][]rune, strings, words []string) *TextFilter {
 	stringLayer := newStringFilter(standins, strings)
 	wordLayer := newStringFilter(standins, words)
 

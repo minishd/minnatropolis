@@ -7,8 +7,10 @@ import (
 	"log"
 	"net/http"
 	"net/netip"
+	"net/url"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/gorilla/schema"
 	"github.com/minishd/minnatropolis/datastore"
 )
 
@@ -16,6 +18,7 @@ var validate *validator.Validate = validator.New(
 	validator.WithRequiredStructEnabled(),
 	validator.WithTagNameFuncBlankOmit(),
 )
+var schemaDecoder *schema.Decoder = schema.NewDecoder()
 
 const kSession = "session"
 
@@ -46,9 +49,11 @@ func SetAuthCookie(w http.ResponseWriter, token string) {
 func GetIP(r *http.Request) netip.Addr {
 	// First, try x-forwarded-for header
 	xff := r.Header.Get("x-forwarded-for")
-	addr, err := netip.ParseAddr(xff)
-	if err == nil {
-		return addr
+	if xff != "" {
+		addr, err := netip.ParseAddr(xff)
+		if err == nil {
+			return addr
+		}
 	}
 
 	// If that doesn't work, use connection IP
@@ -89,8 +94,57 @@ func GetAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionTok
 	return
 }
 
+// Validates a request struct
+func validateReq(req any) (err error) {
+	// Pass to validator
+	if err = validate.Struct(req); err != nil {
+		// Is the struct tag just invalid?
+		if _, ok := errors.AsType[*validator.InvalidValidationError](err); ok {
+			// `validate` struct tag is malformed.
+			// This is our fault and should be fixed
+			// before shipping
+			panic(err)
+		}
+
+		// No the struct tag wasn't invalid,
+		// so it is the user's fault
+		err = ErrRequestInvalid
+		return
+	}
+
+	// There was no validation error
+	return
+}
+
+// Parses the querystring of a request
+func ParseQuery[Req any](r *http.Request) (req Req, err error) {
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		err = ErrQueryMalformed
+		return
+	}
+
+	// Unmarshal querystring vaules
+	if err = schemaDecoder.Decode(&req, values); err != nil {
+		// I don't know of any error here that isn't
+		// the user's fault
+		// Unlike JSON we already handled malformed requests,
+		// so we don't return [ErrQueryMalformed] here
+		err = ErrRequestInvalid
+		return
+	}
+
+	// Pass to validator
+	if err = validateReq(req); err != nil {
+		return
+	}
+
+	// It seems ok
+	return
+}
+
 // Parses the body of a request from JSON
-func ParseReq[Req any](r *http.Request) (req Req, err error) {
+func ParseBody[Req any](r *http.Request) (req Req, err error) {
 	// Only proceed if Content-Type is JSON
 	// TODO: make this more lenient?
 	contentType := r.Header.Get("Content-Type")
@@ -113,18 +167,7 @@ func ParseJSON[Req any](data io.Reader) (req Req, err error) {
 	}
 
 	// Validate
-	if err = validate.Struct(req); err != nil {
-		// Is the struct tag just invalid?
-		if _, ok := errors.AsType[*validator.InvalidValidationError](err); ok {
-			// `validate` struct tag is malformed.
-			// This is our fault and should be fixed
-			// before shipping
-			panic(err)
-		}
-
-		// No the struct tag wasn't invalid,
-		// so it is the user's fault
-		err = ErrBodyInvalid
+	if err = validateReq(req); err != nil {
 		return
 	}
 

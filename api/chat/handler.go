@@ -125,7 +125,7 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 	// No empty messages or control characters
 	content := strings.TrimSpace(req.Content)
 	if content == "" || strings.ContainsFunc(content, unicode.IsControl) {
-		u.SendError(web.ErrBodyInvalid)
+		u.SendError(web.ErrRequestInvalid)
 		return
 	}
 

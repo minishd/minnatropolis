@@ -88,7 +88,7 @@ func (h *Handlers) HandleCreate(w http.ResponseWriter, r *http.Request, session 
 	}
 
 	// Parse request
-	req, err := web.ParseReq[createReq](r)
+	req, err := web.ParseBody[createReq](r)
 	if err != nil {
 		return
 	}
@@ -121,7 +121,7 @@ func (h *Handlers) HandleJoin(w http.ResponseWriter, r *http.Request, session *d
 	}
 
 	// Parse request
-	req, err := web.ParseReq[joinReq](r)
+	req, err := web.ParseBody[joinReq](r)
 	if err != nil {
 		return
 	}

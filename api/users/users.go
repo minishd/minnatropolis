@@ -99,7 +99,7 @@ func (h *Handlers) HandleBlockListAdd(w http.ResponseWriter, r *http.Request, se
 	type blocklistAddRes = blocklistRes
 
 	// Parse request
-	req, err := web.ParseReq[blocklistAddReq](r)
+	req, err := web.ParseBody[blocklistAddReq](r)
 	if err != nil {
 		return
 	}
@@ -136,7 +136,7 @@ func (h *Handlers) HandleBlockListRemove(w http.ResponseWriter, r *http.Request,
 	type blocklistRemoveRes = blocklistRes
 
 	// Parse request
-	req, err := web.ParseReq[blocklistRemoveReq](r)
+	req, err := web.ParseBody[blocklistRemoveReq](r)
 	if err != nil {
 		return
 	}

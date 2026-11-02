@@ -45,7 +45,8 @@ var (
 	ErrUnauthorized    = &Error{401, "unauthorized"}
 	ErrTooManyRequests = &Error{429, "too many requests"}
 	ErrNotJSON         = &Error{415, "only json accepted"}
+	ErrQueryMalformed  = &Error{400, "request query malformed"}
 	ErrBodyMalformed   = &Error{400, "request body malformed"}
-	ErrBodyInvalid     = &Error{400, "request body fails validation"}
+	ErrRequestInvalid  = &Error{400, "request fails validation"}
 	ErrServerInternal  = &Error{500, "internal server error"}
 )

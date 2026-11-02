@@ -71,13 +71,13 @@ func (h *Handler) arePacketsSkippedMap(us *user.ClientData) bool {
 	return h.filters.IsMapSingleplayer(us.RoomID)
 }
 
-func hasBlocked(source *user.ClientData, subject *user.ClientData) (ok bool) {
+func hasBlocked(source, subject *user.ClientData) (ok bool) {
 	_, ok = source.Blocklist[subject.AccountUUID]
 	return
 }
 
 // Whether or not we should skip packets about a player.
-func (h *Handler) arePacketsSkippedPlayer(from *user.ClientData, to *user.ClientData) bool {
+func (h *Handler) arePacketsSkippedPlayer(from, to *user.ClientData) bool {
 	// Is it ourselves? We already know what we sent
 	if from.CID == to.CID {
 		return true

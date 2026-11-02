@@ -191,8 +191,11 @@ func (h *Handler) OnOpen(c *gws.Conn) {
 	// If game is Collective Unconscious,
 	// we also want to set the time and weather.
 	if h.coun != nil {
-		initial = append(initial, h.coun.GetTimePacket())
-		initial = append(initial, h.coun.GetWeatherPacket())
+		initial = append(
+			initial,
+			h.coun.GetTimePacket(),
+			h.coun.GetWeatherPacket(),
+		)
 	}
 
 	// Send initial packet immediately..

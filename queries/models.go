@@ -247,6 +247,7 @@ type User struct {
 	Username          string
 	PwHashType        PwHashTypeT
 	PwHash            string
+	LastVisitAt       time.Time
 	LastSeenIp        *netip.Addr
 	ModNote           string
 	CurrentPunishment *uuid.UUID

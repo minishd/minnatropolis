@@ -50,12 +50,6 @@ func (r Role) PermissionLevel() int {
 	}
 }
 
-// We have helper functions for converting enums
-// because it's possible that database enums are changed
-// but not the corresponding enum in the program
-// The database won't let us supply unrecognised enum values
-// though so the inverse is not true
-
 func dbPwHashTypeToApp(dbPHT queries.PwHashTypeT) PwHashType {
 	pht := PwHashType(dbPHT)
 
@@ -93,6 +87,7 @@ type User struct {
 	Username          string
 	PwHashType        PwHashType
 	PwHash            string
+	LastVisitAt       time.Time
 	LastSeenIP        *netip.Addr
 	ModNote           string
 	CurrentPunishment *Punishment
@@ -118,6 +113,7 @@ func dbUserToApp(u queries.User, p *queries.Punishment) *User {
 		Username:          u.Username,
 		PwHashType:        dbPwHashTypeToApp(u.PwHashType),
 		PwHash:            u.PwHash,
+		LastVisitAt:       u.LastVisitAt,
 		LastSeenIP:        u.LastSeenIp,
 		ModNote:           u.ModNote,
 		CurrentPunishment: punishment,

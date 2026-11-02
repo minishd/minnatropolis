@@ -80,7 +80,7 @@ func (h *Handlers) HandleRegister(w http.ResponseWriter, r *http.Request) (err e
 	}
 
 	// Parse request
-	req, err := web.ParseReq[registerReq](r)
+	req, err := web.ParseBody[registerReq](r)
 	if err != nil {
 		return
 	}
@@ -137,7 +137,7 @@ func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) (err erro
 	}
 
 	// Parse request
-	req, err := web.ParseReq[loginReq](r)
+	req, err := web.ParseBody[loginReq](r)
 	if err != nil {
 		return
 	}

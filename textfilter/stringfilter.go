@@ -52,7 +52,7 @@ func newStringFilter(standins map[rune][]rune, strings []string) *stringFilter {
 
 // Recursive function that handles the logic of
 // checking for a bad prefix.
-func (sf *stringFilter) hasBadPrefixStep(prevNode *letterNode, text string, depth int, farthest int) int {
+func (sf *stringFilter) hasBadPrefixStep(prevNode *letterNode, text string, depth, farthest int) int {
 	// If string is empty, there is nothing to find
 	// Just return early
 	if text == "" {

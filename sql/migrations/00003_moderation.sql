@@ -34,10 +34,11 @@ CREATE TYPE role_t AS ENUM (
 );
 
 ALTER TABLE users
+ADD COLUMN last_visit_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 ADD COLUMN last_seen_ip       INET,
-ADD COLUMN mod_note           TEXT   NOT NULL DEFAULT '',
-ADD COLUMN current_punishment UUID   REFERENCES punishments (id),
-ADD COLUMN role               role_t NOT NULL DEFAULT 'default'::role_t;
+ADD COLUMN mod_note           TEXT        NOT NULL DEFAULT '',
+ADD COLUMN current_punishment UUID        REFERENCES punishments (id) ON DELETE SET NULL,
+ADD COLUMN role               role_t      NOT NULL DEFAULT 'default'::role_t;
 
 -- why: finding all users with a last seen IP
 -- .. for applying IP punishments
@@ -108,7 +109,9 @@ ALTER TABLE users
 DROP COLUMN role,
 DROP COLUMN current_punishment,
 DROP COLUMN mod_note,
-DROP COLUMN last_seen_ip;
+DROP COLUMN last_seen_ip,
+DROP COLUMN last_visit_at;
+DROP TYPE role_t;
 
 DROP TABLE punishment_ips;
 DROP TABLE punishments;

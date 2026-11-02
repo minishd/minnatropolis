@@ -45,7 +45,7 @@ func (q *Queries) CreateParty(ctx context.Context, name string) (Party, error) {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (username, pw_hash_type, pw_hash, current_punishment)
 VALUES ($1, $2, $3, $4)
-RETURNING id, created_at, username, pw_hash_type, pw_hash, last_seen_ip, mod_note, current_punishment, role
+RETURNING id, created_at, username, pw_hash_type, pw_hash, last_visit_at, last_seen_ip, mod_note, current_punishment, role
 `
 
 type CreateUserParams struct {
@@ -69,6 +69,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Username,
 		&i.PwHashType,
 		&i.PwHash,
+		&i.LastVisitAt,
 		&i.LastSeenIp,
 		&i.ModNote,
 		&i.CurrentPunishment,
@@ -160,7 +161,7 @@ func (q *Queries) GetActivePunishmentForIP(ctx context.Context, ip netip.Addr) (
 }
 
 const getPartyMembers = `-- name: GetPartyMembers :many
-SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
+SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_visit_at, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
 FROM party_members pm
      JOIN users u       ON u.id = pm.member_user
 LEFT JOIN punishments p ON p.id = u.current_punishment
@@ -197,6 +198,7 @@ func (q *Queries) GetPartyMembers(ctx context.Context, party uuid.UUID) ([]GetPa
 			&i.User.Username,
 			&i.User.PwHashType,
 			&i.User.PwHash,
+			&i.User.LastVisitAt,
 			&i.User.LastSeenIp,
 			&i.User.ModNote,
 			&i.User.CurrentPunishment,
@@ -231,7 +233,7 @@ func (q *Queries) GetPartyMembers(ctx context.Context, party uuid.UUID) ([]GetPa
 }
 
 const getUserBlockList = `-- name: GetUserBlockList :many
-SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
+SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_visit_at, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
 FROM block_relations br
      JOIN users u       ON u.id = br.blocked_user
 LEFT JOIN punishments p ON p.id = u.current_punishment
@@ -267,6 +269,7 @@ func (q *Queries) GetUserBlockList(ctx context.Context, originUser uuid.UUID) ([
 			&i.User.Username,
 			&i.User.PwHashType,
 			&i.User.PwHash,
+			&i.User.LastVisitAt,
 			&i.User.LastSeenIp,
 			&i.User.ModNote,
 			&i.User.CurrentPunishment,
@@ -301,7 +304,7 @@ func (q *Queries) GetUserBlockList(ctx context.Context, originUser uuid.UUID) ([
 }
 
 const getUserByUsername = `-- name: GetUserByUsername :one
-SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
+SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_visit_at, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
 FROM users u
 LEFT JOIN punishments p ON p.id = u.current_punishment
                        AND p.is_disabled IS FALSE
@@ -330,6 +333,7 @@ func (q *Queries) GetUserByUsername(ctx context.Context, username string) (GetUs
 		&i.User.Username,
 		&i.User.PwHashType,
 		&i.User.PwHash,
+		&i.User.LastVisitAt,
 		&i.User.LastSeenIp,
 		&i.User.ModNote,
 		&i.User.CurrentPunishment,
@@ -417,7 +421,7 @@ func (q *Queries) InsertSessionToken(ctx context.Context, arg InsertSessionToken
 }
 
 const lookupSessionToken = `-- name: LookupSessionToken :one
-SELECT st.id, st.created_at, st.for_user, st.token, st.expires_at, u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
+SELECT st.id, st.created_at, st.for_user, st.token, st.expires_at, u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_visit_at, u.last_seen_ip, u.mod_note, u.current_punishment, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
 FROM session_tokens st
      JOIN users u       ON u.id = st.for_user
 LEFT JOIN punishments p ON p.id = u.current_punishment
@@ -454,6 +458,7 @@ func (q *Queries) LookupSessionToken(ctx context.Context, token string) (LookupS
 		&i.User.Username,
 		&i.User.PwHashType,
 		&i.User.PwHash,
+		&i.User.LastVisitAt,
 		&i.User.LastSeenIp,
 		&i.User.ModNote,
 		&i.User.CurrentPunishment,
