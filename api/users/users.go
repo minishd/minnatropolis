@@ -1,4 +1,4 @@
-package api
+package users
 
 import (
 	"net/http"
@@ -11,23 +11,46 @@ import (
 	"github.com/minishd/minnatropolis/datastore"
 )
 
-type usersHandlers struct {
+type Handlers struct {
 	ds *datastore.DataStore
 	rh *room.Handler
 	ch *chat.Handler
 }
 
-func (h *usersHandlers) handleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func NewHandlers(ds *datastore.DataStore, rh *room.Handler, ch *chat.Handler) *Handlers {
+	return &Handlers{ds, rh, ch}
+}
+
+func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	type punishmentType string
+	type punishmentInfo struct {
+		StartedAt time.Time
+		EndsAt    *time.Time
+		Type      punishmentType
+		Reason    string
+	}
 	type meRes struct {
-		AccountID uuid.UUID
-		Username  string
-		CreatedAt time.Time
+		AccountID  uuid.UUID
+		Username   string
+		CreatedAt  time.Time
+		Punishment *punishmentInfo
+	}
+
+	var punishInfo *punishmentInfo
+	if punish := session.ForUser.CurrentPunishment; punish != nil && !punish.IsHidden() {
+		punishInfo = &punishmentInfo{
+			StartedAt: punish.CreatedAt,
+			EndsAt:    punish.ExpiresAt,
+			Type:      punishmentType(punish.PunishmentType),
+			Reason:    punish.Reason,
+		}
 	}
 
 	web.SendResOK(w, meRes{
-		AccountID: session.ForUser.ID,
-		Username:  session.ForUser.Username,
-		CreatedAt: session.ForUser.CreatedAt,
+		AccountID:  session.ForUser.ID,
+		Username:   session.ForUser.Username,
+		CreatedAt:  session.ForUser.CreatedAt,
+		Punishment: punishInfo,
 	})
 	return
 }
@@ -53,7 +76,7 @@ func usersToBlockList(users []*datastore.User) []blocklistEntry {
 
 // Returns all accounts the user has blocked
 // (Needs authentication)
-func (h *usersHandlers) handleBlockList(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleBlockList(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	// Look up user's block list
 	ctx := r.Context()
 	users, err := h.ds.GetBlockedUsers(ctx, session.ForUser.ID)
@@ -69,14 +92,14 @@ func (h *usersHandlers) handleBlockList(w http.ResponseWriter, r *http.Request, 
 
 // Adds an account to user's block list
 // (Needs authentication)
-func (h *usersHandlers) handleBlockListAdd(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleBlockListAdd(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type blocklistAddReq struct {
 		UserID uuid.UUID
 	}
 	type blocklistAddRes = blocklistRes
 
 	// Parse request
-	req, err := web.ParseReq[blocklistAddReq](r)
+	req, err := web.ParseBody[blocklistAddReq](r)
 	if err != nil {
 		return
 	}
@@ -106,14 +129,14 @@ func (h *usersHandlers) handleBlockListAdd(w http.ResponseWriter, r *http.Reques
 
 // Removes an account from user's block list
 // (Needs authentication)
-func (h *usersHandlers) handleBlockListRemove(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleBlockListRemove(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type blocklistRemoveReq struct {
 		UserID uuid.UUID
 	}
 	type blocklistRemoveRes = blocklistRes
 
 	// Parse request
-	req, err := web.ParseReq[blocklistRemoveReq](r)
+	req, err := web.ParseBody[blocklistRemoveReq](r)
 	if err != nil {
 		return
 	}

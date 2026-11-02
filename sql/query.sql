@@ -1,11 +1,20 @@
 -- name: CreateUser :one
-INSERT INTO users (username, pw_hash_type, pw_hash)
-VALUES ($1, $2, $3)
+INSERT INTO users (username, pw_hash_type, pw_hash, current_punishment)
+VALUES ($1, $2, $3, $4)
 RETURNING *;
 
 -- name: GetUserByUsername :one
-SELECT * FROM users
-WHERE username = $1;
+SELECT sqlc.embed(u), sqlc.nembed(p)
+FROM users u
+LEFT JOIN punishments p ON p.id = u.current_punishment
+                       AND p.is_disabled IS FALSE
+                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+WHERE u.username = $1;
+
+-- name: UpdateUserLastVisit :exec
+UPDATE users
+SET last_visit_at = $2
+WHERE id = $1;
 
 -- name: InsertSessionToken :exec
 INSERT INTO session_tokens (for_user, token, expires_at)
@@ -25,17 +34,15 @@ UPDATE session_tokens
 SET expires_at = $2
 WHERE id = $1;
 
--- name: LookupSessionTokenWithUser :one
-SELECT st.*,
-    u.id AS user_id,
-    u.created_at AS user_created_at,
-    u.username AS user_username,
-    u.pw_hash_type AS user_pw_hash_type,
-    u.pw_hash AS user_pw_hash
+-- name: LookupSessionToken :one
+SELECT sqlc.embed(st), sqlc.embed(u), sqlc.nembed(p)
 FROM session_tokens st
-JOIN users u ON u.id = st.for_user
-WHERE token = $1
-  AND expires_at > CURRENT_TIMESTAMP;
+     JOIN users u       ON u.id = st.for_user
+LEFT JOIN punishments p ON p.id = u.current_punishment
+                       AND p.is_disabled IS FALSE
+                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+WHERE st.token = $1
+  AND st.expires_at > CURRENT_TIMESTAMP;
 
 -- name: InsertBlockRelation :exec
 INSERT INTO block_relations (origin_user, blocked_user)
@@ -47,10 +54,13 @@ WHERE origin_user = $1
   AND blocked_user = $2;
 
 -- name: GetUserBlockList :many
-SELECT u.*
+SELECT sqlc.embed(u), sqlc.nembed(p)
 FROM block_relations br
-JOIN users u ON u.id = br.blocked_user
-WHERE origin_user = $1;
+     JOIN users u       ON u.id = br.blocked_user
+LEFT JOIN punishments p ON p.id = u.current_punishment
+                       AND p.is_disabled IS FALSE
+                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+WHERE br.origin_user = $1;
 
 -- name: CreateParty :one
 INSERT INTO parties (name)
@@ -61,13 +71,16 @@ RETURNING *;
 SELECT p.*
 FROM party_members pm
 JOIN parties p ON p.id = pm.party
-WHERE member_user = $1;
+WHERE pm.member_user = $1;
 
 -- name: GetPartyMembers :many
-SELECT u.*
+SELECT sqlc.embed(u), sqlc.nembed(p)
 FROM party_members pm
-JOIN users u ON u.id = pm.member_user
-WHERE party = $1
+     JOIN users u       ON u.id = pm.member_user
+LEFT JOIN punishments p ON p.id = u.current_punishment
+                       AND p.is_disabled IS FALSE
+                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+WHERE pm.party = $1
 ORDER BY pm.created_at;
 
 -- name: InsertPartyMember :exec
@@ -86,3 +99,10 @@ WHERE p.id = $1
     SELECT 1 FROM party_members pm
     WHERE pm.party = p.id
   );
+
+-- name: GetActivePunishmentForIP :one
+SELECT p.* FROM punishments p
+JOIN punishment_ips pi ON pi.punishment = p.id
+WHERE pi.ip = $1
+  AND p.is_disabled IS FALSE
+  AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at);

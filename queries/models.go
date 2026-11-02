@@ -7,10 +7,98 @@ package queries
 import (
 	"database/sql/driver"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+type LogTypeT string
+
+const (
+	LogTypeTModNoteChanged LogTypeT = "mod_note_changed"
+	LogTypeTPunishedUser   LogTypeT = "punished_user"
+	LogTypeTGaveBadge      LogTypeT = "gave_badge"
+	LogTypeTRemovedBadge   LogTypeT = "removed_badge"
+)
+
+func (e *LogTypeT) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = LogTypeT(s)
+	case string:
+		*e = LogTypeT(s)
+	default:
+		return fmt.Errorf("unsupported scan type for LogTypeT: %T", src)
+	}
+	return nil
+}
+
+type NullLogTypeT struct {
+	LogTypeT LogTypeT
+	Valid    bool // Valid is true if LogTypeT is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullLogTypeT) Scan(value interface{}) error {
+	if value == nil {
+		ns.LogTypeT, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.LogTypeT.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullLogTypeT) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.LogTypeT), nil
+}
+
+type PunishmentTypeT string
+
+const (
+	PunishmentTypeTMute      PunishmentTypeT = "mute"
+	PunishmentTypeTBan       PunishmentTypeT = "ban"
+	PunishmentTypeTBanSilent PunishmentTypeT = "ban_silent"
+)
+
+func (e *PunishmentTypeT) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PunishmentTypeT(s)
+	case string:
+		*e = PunishmentTypeT(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PunishmentTypeT: %T", src)
+	}
+	return nil
+}
+
+type NullPunishmentTypeT struct {
+	PunishmentTypeT PunishmentTypeT
+	Valid           bool // Valid is true if PunishmentTypeT is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPunishmentTypeT) Scan(value interface{}) error {
+	if value == nil {
+		ns.PunishmentTypeT, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PunishmentTypeT.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPunishmentTypeT) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PunishmentTypeT), nil
+}
 
 type PwHashTypeT string
 
@@ -53,6 +141,61 @@ func (ns NullPwHashTypeT) Value() (driver.Value, error) {
 	return string(ns.PwHashTypeT), nil
 }
 
+type RoleT string
+
+const (
+	RoleTDefault              RoleT = "default"
+	RoleTMusicContributor     RoleT = "music_contributor"
+	RoleTBookCoverContributor RoleT = "book_cover_contributor"
+	RoleTDeveloper            RoleT = "developer"
+	RoleTSiteDeveloper        RoleT = "site_developer"
+	RoleTModerator            RoleT = "moderator"
+	RoleTAdministrator        RoleT = "administrator"
+)
+
+func (e *RoleT) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = RoleT(s)
+	case string:
+		*e = RoleT(s)
+	default:
+		return fmt.Errorf("unsupported scan type for RoleT: %T", src)
+	}
+	return nil
+}
+
+type NullRoleT struct {
+	RoleT RoleT
+	Valid bool // Valid is true if RoleT is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullRoleT) Scan(value interface{}) error {
+	if value == nil {
+		ns.RoleT, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.RoleT.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullRoleT) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.RoleT), nil
+}
+
+type AuditLog struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	LogType   LogTypeT
+	LogDetail []byte
+	CausedBy  *uuid.UUID
+}
+
 type BlockRelation struct {
 	ID          uuid.UUID
 	CreatedAt   time.Time
@@ -73,6 +216,23 @@ type PartyMember struct {
 	MemberUser uuid.UUID
 }
 
+type Punishment struct {
+	ID             uuid.UUID
+	CreatedAt      time.Time
+	PunishmentType PunishmentTypeT
+	IsIpEnforced   bool
+	IsDisabled     bool
+	ExpiresAt      *time.Time
+	Reason         string
+}
+
+type PunishmentIp struct {
+	ID         uuid.UUID
+	CreatedAt  time.Time
+	Ip         netip.Addr
+	Punishment uuid.UUID
+}
+
 type SessionToken struct {
 	ID        uuid.UUID
 	CreatedAt time.Time
@@ -82,9 +242,14 @@ type SessionToken struct {
 }
 
 type User struct {
-	ID         uuid.UUID
-	CreatedAt  time.Time
-	Username   string
-	PwHashType PwHashTypeT
-	PwHash     string
+	ID                uuid.UUID
+	CreatedAt         time.Time
+	Username          string
+	PwHashType        PwHashTypeT
+	PwHash            string
+	LastVisitAt       time.Time
+	LastSeenIp        *netip.Addr
+	ModNote           string
+	CurrentPunishment *uuid.UUID
+	Role              RoleT
 }

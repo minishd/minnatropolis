@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
 	pt "github.com/minishd/minnatropolis/api/room/protocol"
+	"github.com/minishd/minnatropolis/datastore"
 )
 
 const (
@@ -64,6 +65,7 @@ type ClientData struct {
 	outbox chan []any
 
 	AccountUUID uuid.UUID
+	Punishment  *datastore.Punishment
 	Rank        int32
 	LoggedIn    bool
 	Badge       string
@@ -94,6 +96,7 @@ type ClientData struct {
 func InitData(
 	session gws.SessionStorage, cID int32, username string, roomID int32,
 	accountUUID uuid.UUID, loggedIn bool, blocklist map[uuid.UUID]struct{},
+	punishment *datastore.Punishment,
 ) {
 	// Make guard key
 	guardKey := rand.Uint32()
@@ -111,6 +114,7 @@ func InitData(
 		Name:          username,
 		outbox:        outbox,
 		AccountUUID:   accountUUID,
+		Punishment:    punishment,
 		LoggedIn:      loggedIn,
 		Blocklist:     blocklist,
 		GuardKey:      guardKey,
@@ -186,13 +190,8 @@ func New(c *gws.Conn) *User { return (*User)(c) }
 // Get underlying [gws.Conn].
 func (u *User) Conn() *gws.Conn { return (*gws.Conn)(u) }
 
-// Sets a user's initial [ClientData].
-func SetData(session gws.SessionStorage, cd *ClientData) {
-	session.Store(kClientData, cd)
-}
-
 // Get [ClientData] associated with a connection.
-func (u *User) Data() *ClientData {
+func (u *User) GetData() *ClientData {
 	cd, _ := u.Conn().Session().Load(kClientData)
 	return cd.(*ClientData)
 }
@@ -201,7 +200,7 @@ func (u *User) Data() *ClientData {
 // Does its best to gather many outbound messages
 // into a smaller amount of large messages, which it sends.
 func (u *User) SendLoop() {
-	d := u.Data()
+	d := u.GetData()
 
 	var pending []any         // re-used buffer of pending messages
 	var endMax time.Time      // the latest time current batch could end
@@ -253,7 +252,7 @@ func (u *User) SendImmediate(msgs ...any) {
 
 // Queue a YNO message to be sent.
 func (u *User) Send(msgs ...any) {
-	u.Data().outbox <- msgs
+	u.GetData().outbox <- msgs
 }
 
 // Closes a user's outbox.
