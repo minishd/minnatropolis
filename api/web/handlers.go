@@ -4,9 +4,14 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/minishd/minnatropolis/datastore"
 )
+
+// How long ago somebody's last visit must be
+// in order for us to update it again
+const lastVisitUpdateMinInterval = time.Second * 10
 
 // Middleware that catches errors, conditionally logs,
 // and sends back an appropriate HTTP response
@@ -60,16 +65,29 @@ func requireAuth(ds *datastore.DataStore, next SessionHandler,
 		if session == nil {
 			return ErrUnauthorized
 		}
+		user := session.ForUser
 
 		// If we don't allow banned users here,
 		// and the user has an active ban, reject the request
-		if !allowBanned && session.ForUser.HasPunishment(datastore.PunishmentBan) {
+		if !allowBanned && user.HasPunishment(datastore.PunishmentBan) {
 			return ErrNoBanned
 		}
 
 		// Make sure they have a high enough permission level
-		if session.ForUser.Role.PermissionLevel() < minPermLevel {
+		if user.Role.PermissionLevel() < minPermLevel {
 			return ErrNoPermission
+		}
+
+		// Update their last visit time if it wasn't done
+		// already recently
+		if time.Since(user.LastVisitAt) >= lastVisitUpdateMinInterval {
+			ctx := r.Context()
+			if err = ds.UpdateUserLastVisit(ctx, user.ID, time.Now()); err != nil {
+				// We could log the error and move on
+				// but if the DB isn't working there is probably
+				// an issue anyway
+				return
+			}
 		}
 
 		return next(w, r, session)

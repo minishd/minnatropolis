@@ -154,6 +154,15 @@ func (ds *DataStore) GetUserByUsername(ctx context.Context, username string) (*U
 	return dbUserToApp(row.User, row.Punishment), nil
 }
 
+func (ds *DataStore) UpdateUserLastVisit(ctx context.Context, id uuid.UUID, visitTime time.Time) error {
+	return ds.q.UpdateUserLastVisit(ctx, queries.UpdateUserLastVisitParams{
+		ID:          id,
+		LastVisitAt: visitTime,
+	})
+	// I thought that I checked for updates that
+	// didn't affect any rows but I guess not
+}
+
 func getBlockedUsers(ctx context.Context, q *queries.Queries, originUser uuid.UUID) ([]*User, error) {
 	rows, err := q.GetUserBlockList(ctx, originUser)
 	if err != nil {

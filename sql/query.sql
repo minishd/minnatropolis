@@ -11,6 +11,11 @@ LEFT JOIN punishments p ON p.id = u.current_punishment
                        AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
 WHERE u.username = $1;
 
+-- name: UpdateUserLastVisit :exec
+UPDATE users
+SET last_visit_at = $2
+WHERE id = $1;
+
 -- name: InsertSessionToken :exec
 INSERT INTO session_tokens (for_user, token, expires_at)
 VALUES ($1, $2, $3);

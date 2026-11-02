@@ -500,3 +500,19 @@ func (q *Queries) UpdateSessionTokenExpiry(ctx context.Context, arg UpdateSessio
 	_, err := q.db.Exec(ctx, updateSessionTokenExpiry, arg.ID, arg.ExpiresAt)
 	return err
 }
+
+const updateUserLastVisit = `-- name: UpdateUserLastVisit :exec
+UPDATE users
+SET last_visit_at = $2
+WHERE id = $1
+`
+
+type UpdateUserLastVisitParams struct {
+	ID          uuid.UUID
+	LastVisitAt time.Time
+}
+
+func (q *Queries) UpdateUserLastVisit(ctx context.Context, arg UpdateUserLastVisitParams) error {
+	_, err := q.db.Exec(ctx, updateUserLastVisit, arg.ID, arg.LastVisitAt)
+	return err
+}
