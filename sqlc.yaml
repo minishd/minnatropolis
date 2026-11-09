@@ -13,7 +13,22 @@ sql:
             nullable: false
             go_type:
               import: "github.com/google/uuid"
-              type: UUID
+              type: "UUID"
+
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+              pointer: true
+
           - db_type: "timestamptz"
             nullable: false
             go_type: "time.Time"
+
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true

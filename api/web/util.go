@@ -6,8 +6,11 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/netip"
+	"net/url"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/gorilla/schema"
 	"github.com/minishd/minnatropolis/datastore"
 )
 
@@ -15,6 +18,7 @@ var validate *validator.Validate = validator.New(
 	validator.WithRequiredStructEnabled(),
 	validator.WithTagNameFuncBlankOmit(),
 )
+var schemaDecoder *schema.Decoder = schema.NewDecoder()
 
 const kSession = "session"
 
@@ -39,6 +43,28 @@ func SetAuthCookie(w http.ResponseWriter, token string) {
 		Path:        "/",
 	}
 	http.SetCookie(w, cookie)
+}
+
+// Reads the IP of a request
+func GetIP(r *http.Request) netip.Addr {
+	// First, try x-forwarded-for header
+	xff := r.Header.Get("x-forwarded-for")
+	if xff != "" {
+		addr, err := netip.ParseAddr(xff)
+		if err == nil {
+			return addr
+		}
+	}
+
+	// If that doesn't work, use connection IP
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		log.Println("couldn't read IP from request", err)
+		return netip.IPv4Unspecified()
+	}
+
+	// That worked, return the connection IP
+	return ap.Addr()
 }
 
 // Reads and looks up a provided session token
@@ -68,23 +94,57 @@ func GetAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionTok
 	return
 }
 
-// Session handler wrapper for authentication
-func RequireAuth(ds *datastore.DataStore, next sessionHandler) handleError {
-	return func(w http.ResponseWriter, r *http.Request) (err error) {
-		session, err := GetAuth(ds, r)
-		if err != nil {
-			return
-		}
-		if session == nil {
-			return ErrUnauthorized
+// Validates a request struct
+func validateReq(req any) (err error) {
+	// Pass to validator
+	if err = validate.Struct(req); err != nil {
+		// Is the struct tag just invalid?
+		if _, ok := errors.AsType[*validator.InvalidValidationError](err); ok {
+			// `validate` struct tag is malformed.
+			// This is our fault and should be fixed
+			// before shipping
+			panic(err)
 		}
 
-		return next(w, r, session)
+		// No the struct tag wasn't invalid,
+		// so it is the user's fault
+		err = ErrRequestInvalid
+		return
 	}
+
+	// There was no validation error
+	return
+}
+
+// Parses the querystring of a request
+func ParseQuery[Req any](r *http.Request) (req Req, err error) {
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		err = ErrQueryMalformed
+		return
+	}
+
+	// Unmarshal querystring vaules
+	if err = schemaDecoder.Decode(&req, values); err != nil {
+		// I don't know of any error here that isn't
+		// the user's fault
+		// Unlike JSON we already handled malformed requests,
+		// so we don't return [ErrQueryMalformed] here
+		err = ErrRequestInvalid
+		return
+	}
+
+	// Pass to validator
+	if err = validateReq(req); err != nil {
+		return
+	}
+
+	// It seems ok
+	return
 }
 
 // Parses the body of a request from JSON
-func ParseReq[Req any](r *http.Request) (req Req, err error) {
+func ParseBody[Req any](r *http.Request) (req Req, err error) {
 	// Only proceed if Content-Type is JSON
 	// TODO: make this more lenient?
 	contentType := r.Header.Get("Content-Type")
@@ -107,18 +167,7 @@ func ParseJSON[Req any](data io.Reader) (req Req, err error) {
 	}
 
 	// Validate
-	if err = validate.Struct(req); err != nil {
-		// Is the struct tag just invalid?
-		if _, ok := errors.AsType[*validator.InvalidValidationError](err); ok {
-			// `validate` struct tag is malformed.
-			// This is our fault and should be fixed
-			// before shipping
-			panic(err)
-		}
-
-		// No the struct tag wasn't invalid,
-		// so it is the user's fault
-		err = ErrBodyInvalid
+	if err = validateReq(req); err != nil {
 		return
 	}
 
@@ -137,43 +186,4 @@ func SendRes[Res any](w http.ResponseWriter, status int, res Res) (err error) {
 // Send back a JSON response with status `200 OK`
 func SendResOK[Res any](w http.ResponseWriter, res Res) error {
 	return SendRes(w, http.StatusOK, res)
-}
-
-// Request handler that additionally receives the
-// session of the user that sent the request
-type sessionHandler func(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error)
-
-// Middleware that catches errors, conditionally logs,
-// and sends back an appropriate HTTP response
-//
-// Also kind of wraps an error-returning handler into a normal [http.Handler],
-// which can then be chained with other middlewares
-type handleError func(w http.ResponseWriter, r *http.Request) (err error)
-
-// Response type that is sent back to the client
-// if their request didn't succeed
-type errorRes struct {
-	Error string
-}
-
-func (handler handleError) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Call req. handler
-	if err := handler(w, r); err != nil {
-		// An error was returned
-		// See if it's an [Error],
-		// werr wrote down status codes and error messages
-		// for those that werr want to return
-		werr, ok := errors.AsType[*Error](err)
-		if !ok {
-			// We could not cast it to an [Error]
-			// Log it, and fall back to generic "server error" message
-			log.Println("handler raised error:", err)
-			werr = ErrServerInternal
-		}
-
-		// Set status code & send back error response
-		if err := SendRes(w, werr.Status, errorRes{werr.Note}); err != nil {
-			log.Println("couldn't send error response:", err)
-		}
-	}
 }
