@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"errors"
-	"log"
 	"reflect"
 	"strconv"
 	"strings"
@@ -125,7 +124,6 @@ func deserializeAny(typ reflect.Type, parts []string) (val reflect.Value, consum
 		// Only allow ints of specified bitness
 		panic("deserialize int of unspecified size")
 	default:
-		log.Println(typ.String())
 		panic("deserialize unhandled type")
 	}
 
