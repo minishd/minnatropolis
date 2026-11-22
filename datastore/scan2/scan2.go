@@ -151,6 +151,15 @@ func flatten(val reflect.Value, pthisStruct *reflect.Value) (fields []any, nzs [
 		ifields[idx] = []any{fval.Addr().Interface()}
 	}
 
+	// Make sure there aren't any missing fields
+	// (This would happen if you defined fields 0 and 2
+	// 	 but not 1 for example)
+	if slices.ContainsFunc(ifields, func(f []any) bool {
+		return f == nil
+	}) {
+		panic("gap in fields defined by struct tag")
+	}
+
 	// Flatten, return ..
 	fields = slices.Concat(ifields...)
 	if len(nz.fields) != 0 {
