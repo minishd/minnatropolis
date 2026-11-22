@@ -106,7 +106,7 @@ func (h *Handlers) HandleBlockListAdd(w http.ResponseWriter, r *http.Request, se
 
 	// Try to add blocked user
 	ctx := r.Context()
-	users, err := h.ds.InsertBlockRelation(ctx, session.ForUser.ID, req.UserID)
+	users, err := h.ds.AddBlockRelation(ctx, session.ForUser.ID, req.UserID)
 	switch err {
 	case datastore.ErrNotUnique:
 		err = web.ErrAlreadyBlocked
@@ -143,7 +143,7 @@ func (h *Handlers) HandleBlockListRemove(w http.ResponseWriter, r *http.Request,
 
 	// Try to remove blocked user
 	ctx := r.Context()
-	users, err := h.ds.DeleteBlockRelation(ctx, session.ForUser.ID, req.UserID)
+	users, err := h.ds.RemoveBlockRelation(ctx, session.ForUser.ID, req.UserID)
 	if err == datastore.ErrNotFound {
 		err = web.ErrNotBlocked
 		return

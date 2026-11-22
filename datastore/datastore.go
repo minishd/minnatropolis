@@ -6,7 +6,7 @@ import (
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/minishd/minnatropolis/queries"
+	"github.com/minishd/minnatropolis/datastore/scan2"
 )
 
 var (
@@ -19,15 +19,22 @@ var (
 // Database abstraction to decouple
 // DB code from rest of app code
 type DataStore struct {
-	q    *queries.Queries
 	pool *pgxpool.Pool
 }
 
 func New(pool *pgxpool.Pool) *DataStore {
 	return &DataStore{
-		q:    queries.New(pool),
 		pool: pool,
 	}
+}
+
+// Register types that we will be taking
+// from the database
+func init() {
+	scan2.Register2[SessionToken]()
+	scan2.Register2[User]()
+	scan2.Register2[Punishment]()
+	scan2.Register2[Party]()
 }
 
 // Convert Postgres error to one we defined
@@ -44,4 +51,16 @@ func checkPgError(err error) error {
 		}
 	}
 	return nil
+}
+
+// Helper function for our custom types' scanners
+func scanStringType[T ~string](src any) T {
+	switch s := src.(type) {
+	case string:
+		return T(s)
+	case []byte:
+		return T(s)
+	default:
+		panic("unsupported scan type")
+	}
 }

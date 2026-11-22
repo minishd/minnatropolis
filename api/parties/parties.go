@@ -96,7 +96,7 @@ func (h *Handlers) HandleCreate(w http.ResponseWriter, r *http.Request, session 
 	// Try to create in DB
 	ctx := r.Context()
 	name := strings.TrimSpace(req.Name)
-	party, err := h.ds.CreateParty(ctx, session.ForUser.ID, name)
+	party, err := h.ds.CreatePartyWithUser(ctx, session.ForUser.ID, name)
 	switch err {
 	case datastore.ErrNotUnique:
 		err = web.ErrAlreadyInParty
@@ -128,7 +128,7 @@ func (h *Handlers) HandleJoin(w http.ResponseWriter, r *http.Request, session *d
 
 	// Try to join
 	ctx := r.Context()
-	party, err := h.ds.InsertPartyMember(ctx, req.PartyID, session.ForUser.ID)
+	party, err := h.ds.AddUserToParty(ctx, req.PartyID, session.ForUser.ID)
 	switch err {
 	case datastore.ErrNotUnique:
 		err = web.ErrAlreadyInParty
@@ -149,7 +149,7 @@ func (h *Handlers) HandleJoin(w http.ResponseWriter, r *http.Request, session *d
 // (Needs authentication)
 func (h *Handlers) HandleLeave(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	ctx := r.Context()
-	err = h.ds.DeletePartyMember(ctx, session.ForUser.ID)
+	err = h.ds.RemoveUserFromParty(ctx, session.ForUser.ID)
 	if err == datastore.ErrNotFound {
 		err = web.ErrNotInParty
 		return

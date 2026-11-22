@@ -2,31 +2,56 @@ package datastore
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/minishd/minnatropolis/queries"
+	"github.com/minishd/minnatropolis/datastore/scan2"
 )
 
 type PwHashType string
 
 const (
-	PwHashArgon2id PwHashType = PwHashType(queries.PwHashTypeTArgon2id)
+	PwHashArgon2id PwHashType = "argon2id"
 )
+
+func (e *PwHashType) Scan(src any) error {
+	s := scanStringType[PwHashType](src)
+	switch s {
+	case PwHashArgon2id: // valid variants
+		*e = s
+		return nil
+	default:
+		panic("unknown pw hash type from db")
+	}
+}
 
 type Role string
 
 const (
-	RoleDefault              Role = Role(queries.RoleTDefault)
-	RoleMusicContributor     Role = Role(queries.RoleTMusicContributor)
-	RoleBookCoverContributor Role = Role(queries.RoleTBookCoverContributor)
-	RoleDeveloper            Role = Role(queries.RoleTDeveloper)
-	RoleSiteDeveloper        Role = Role(queries.RoleTSiteDeveloper)
-	RoleModerator            Role = Role(queries.RoleTModerator)
-	RoleAdministrator        Role = Role(queries.RoleTAdministrator)
+	RoleDefault              Role = "default"
+	RoleMusicContributor     Role = "music_contributor"
+	RoleBookCoverContributor Role = "book_cover_contributor"
+	RoleDeveloper            Role = "developer"
+	RoleSiteDeveloper        Role = "site_developer"
+	RoleModerator            Role = "moderator"
+	RoleAdministrator        Role = "administrator"
 )
+
+func (e *Role) Scan(src any) error {
+	s := scanStringType[Role](src)
+	switch s {
+	case RoleDefault, RoleMusicContributor, RoleBookCoverContributor,
+		RoleDeveloper, RoleSiteDeveloper,
+		RoleModerator, RoleAdministrator: // valid variants
+		*e = s
+		return nil
+	default:
+		panic("unknown role from db")
+	}
+}
 
 type PermissionLevel = int
 
@@ -50,48 +75,17 @@ func (r Role) PermissionLevel() int {
 	}
 }
 
-func dbPwHashTypeToApp(dbPHT queries.PwHashTypeT) PwHashType {
-	pht := PwHashType(dbPHT)
-
-	switch pht {
-	case PwHashArgon2id:
-		break
-	default:
-		panic("unknown pw hash type from db")
-	}
-
-	return pht
-}
-func appPwHashTypeToDB(pht PwHashType) queries.PwHashTypeT {
-	return queries.PwHashTypeT(pht)
-}
-
-func dbRoleToApp(dbRole queries.RoleT) Role {
-	role := Role(dbRole)
-
-	switch role {
-	case RoleDefault, RoleMusicContributor, RoleBookCoverContributor,
-		RoleDeveloper, RoleSiteDeveloper,
-		RoleModerator, RoleAdministrator:
-		break
-	default:
-		panic("unknown role from db")
-	}
-
-	return role
-}
-
 type User struct {
-	ID                uuid.UUID
-	CreatedAt         time.Time
-	Username          string
-	PwHashType        PwHashType
-	PwHash            string
-	LastVisitAt       time.Time
-	LastSeenIP        *netip.Addr
-	ModNote           string
-	CurrentPunishment *Punishment
-	Role              Role
+	ID                uuid.UUID   `scan2:"0"`
+	CreatedAt         time.Time   `scan2:"1"`
+	Username          string      `scan2:"2"`
+	PwHashType        PwHashType  `scan2:"3"`
+	PwHash            string      `scan2:"4"`
+	LastVisitAt       time.Time   `scan2:"5"`
+	LastSeenIP        *netip.Addr `scan2:"6"`
+	ModNote           string      `scan2:"7"`
+	CurrentPunishment *Punishment `scan2:"9"`
+	Role              Role        `scan2:"8"`
 }
 
 func (u *User) HasPunishment(pt PunishmentType) bool {
@@ -101,113 +95,87 @@ func (u *User) HasPunishment(pt PunishmentType) bool {
 	return false
 }
 
-func dbUserToApp(u queries.User, p *queries.Punishment) *User {
-	var punishment *Punishment
-	if p != nil {
-		punishment = dbPunishmentToApp(*p)
-	}
+const sqlCreateUser = `
+INSERT INTO users (username, pw_hash_type, pw_hash, current_punishment)
+VALUES ($1, $2, $3, $4)
+RETURNING id, created_at, username, pw_hash_type, pw_hash, last_visit_at, last_seen_ip, mod_note, role`
 
-	return &User{
-		ID:                u.ID,
-		CreatedAt:         u.CreatedAt,
-		Username:          u.Username,
-		PwHashType:        dbPwHashTypeToApp(u.PwHashType),
-		PwHash:            u.PwHash,
-		LastVisitAt:       u.LastVisitAt,
-		LastSeenIP:        u.LastSeenIp,
-		ModNote:           u.ModNote,
-		CurrentPunishment: punishment,
-		Role:              dbRoleToApp(u.Role),
-	}
+type NewUser struct {
+	ID          uuid.UUID   `scan2:"0"`
+	CreatedAt   time.Time   `scan2:"1"`
+	Username    string      `scan2:"2"`
+	PwHashType  PwHashType  `scan2:"3"`
+	PwHash      string      `scan2:"4"`
+	LastVisitAt time.Time   `scan2:"5"`
+	LastSeenIP  *netip.Addr `scan2:"6"`
+	ModNote     string      `scan2:"7"`
+	Role        Role        `scan2:"8"`
 }
 
 func (ds *DataStore) CreateUser(ctx context.Context, username, pwHash string, pwHashType PwHashType,
-	currentPunishID *uuid.UUID) (*User, error) {
+	currentPunishID *uuid.UUID) (*NewUser, error) {
+	// There isn't an easy way to fetch punishment data in an INSERT clause
+	// that I know of, so we return a partial user
+	newUser, err := scan2.ScanOne2[NewUser](ctx, ds.pool, sqlCreateUser, username, pwHashType, pwHash, currentPunishID)
 
-	user, err := ds.q.CreateUser(ctx, queries.CreateUserParams{
-		Username:          username,
-		PwHashType:        appPwHashTypeToDB(pwHashType),
-		PwHash:            pwHash,
-		CurrentPunishment: currentPunishID,
-	})
-
-	if err := checkPgError(err); err != nil {
-		return nil, err
-	}
 	if err != nil {
+		// If the username is already taken,
+		// if the username is not valid..
+		if err := checkPgError(err); err != nil {
+			return nil, err
+		}
+
 		return nil, err
 	}
-	return dbUserToApp(user, nil), nil
+
+	// Return the partial user
+	return newUser, nil
 }
+
+const sqlGetUserByUsername = `
+SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_visit_at, u.last_seen_ip, u.mod_note, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
+FROM users u
+LEFT JOIN punishments p ON p.id = u.current_punishment
+                       AND p.is_disabled IS FALSE
+                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+WHERE u.username = $1`
 
 func (ds *DataStore) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	row, err := ds.q.GetUserByUsername(ctx, username)
-
-	// Did we not find an account?
-	if err == pgx.ErrNoRows {
-		return nil, nil
-	}
+	user, err := scan2.ScanOne2[User](ctx, ds.pool, sqlGetUserByUsername, username)
 
 	if err != nil {
+		// Did we not find an account?
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
 		return nil, err
 	}
-	return dbUserToApp(row.User, row.Punishment), nil
+
+	return user, nil
 }
+
+const sqlUpdateUserLastVisit = `
+UPDATE users
+SET last_visit_at = $2
+WHERE id = $1`
 
 func (ds *DataStore) UpdateUserLastVisit(ctx context.Context, id uuid.UUID, visitTime time.Time) error {
-	return ds.q.UpdateUserLastVisit(ctx, queries.UpdateUserLastVisitParams{
-		ID:          id,
-		LastVisitAt: visitTime,
-	})
-	// I thought that I checked for updates that
-	// didn't affect any rows but I guess not
+	_, err := ds.pool.Exec(ctx, sqlUpdateUserLastVisit, id, visitTime)
+	return err
 }
 
-func getBlockedUsers(ctx context.Context, q *queries.Queries, originUser uuid.UUID) ([]*User, error) {
-	rows, err := q.GetUserBlockList(ctx, originUser)
-	if err != nil {
-		return nil, err
-	}
+const sqlGetUserBlockList = `
+SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_visit_at, u.last_seen_ip, u.mod_note, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
+FROM block_relations br
+     JOIN users u       ON u.id = br.blocked_user
+LEFT JOIN punishments p ON p.id = u.current_punishment
+                       AND p.is_disabled IS FALSE
+                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+WHERE br.origin_user = $1`
 
-	appUsers := make([]*User, 0, len(rows))
-	for _, row := range rows {
-		appUsers = append(appUsers, dbUserToApp(row.User, row.Punishment))
-	}
-	return appUsers, nil
-}
-
-func (ds *DataStore) GetBlockedUsers(ctx context.Context, originUser uuid.UUID) ([]*User, error) {
-	return getBlockedUsers(ctx, ds.q, originUser)
-}
-
-func (ds *DataStore) InsertBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) ([]*User, error) {
-	tx, err := ds.pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-	qtx := ds.q.WithTx(tx)
-
-	err = qtx.InsertBlockRelation(ctx, queries.InsertBlockRelationParams{
-		OriginUser:  originUser,
-		BlockedUser: blockedUser,
-	})
-	// We require each relation to be unique,
-	// so check for unique violation error.
-	// Also bad user IDs.
-	if err := checkPgError(err); err != nil {
-		return nil, err
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	users, err := getBlockedUsers(ctx, qtx, originUser)
-	if err != nil {
-		return nil, err
-	}
-
-	err = tx.Commit(ctx)
+func getUserBlockList(ctx context.Context, tx scan2.Querier, originUser uuid.UUID) ([]*User, error) {
+	users, err := scan2.ScanMany2[User](ctx, tx, sqlGetUserBlockList, originUser)
 	if err != nil {
 		return nil, err
 	}
@@ -215,34 +183,100 @@ func (ds *DataStore) InsertBlockRelation(ctx context.Context, originUser, blocke
 	return users, nil
 }
 
-func (ds *DataStore) DeleteBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) ([]*User, error) {
+func (ds *DataStore) GetBlockedUsers(ctx context.Context, originUser uuid.UUID) ([]*User, error) {
+	return getUserBlockList(ctx, ds.pool, originUser)
+}
+
+const sqlInsertBlockRelation = `
+INSERT INTO block_relations (origin_user, blocked_user)
+VALUES ($1, $2)`
+
+func insertBlockRelation(ctx context.Context, tx pgx.Tx, originUser, blockedUser uuid.UUID) error {
+	_, err := tx.Exec(ctx, sqlInsertBlockRelation, originUser, blockedUser)
+
+	if err != nil {
+		// We require each relation to be unique,
+		// so check for unique violation error.
+		// Also bad user IDs.
+		if err := checkPgError(err); err != nil {
+			return err
+		}
+
+		return err
+	}
+
+	// There was no problem
+	return nil
+}
+
+func (ds *DataStore) AddBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) ([]*User, error) {
 	tx, err := ds.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
-	qtx := ds.q.WithTx(tx)
 
-	rows, err := qtx.DeleteBlockRelation(ctx, queries.DeleteBlockRelationParams{
-		OriginUser:  originUser,
-		BlockedUser: blockedUser,
-	})
-	if err != nil {
+	// Create the block relation
+	if err := insertBlockRelation(ctx, tx, originUser, blockedUser); err != nil {
 		return nil, err
 	}
-	if rows == 0 {
-		return nil, ErrNotFound
-	}
 
-	users, err := getBlockedUsers(ctx, qtx, originUser)
+	// Get user's new block list
+	users, err := getUserBlockList(ctx, tx, originUser)
 	if err != nil {
 		return nil, err
 	}
 
-	err = tx.Commit(ctx)
+	// Commit the transaction
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	// Return the list of blocked users
+	return users, nil
+}
+
+const sqlDeleteBlockRelation = `
+DELETE FROM block_relations
+WHERE origin_user = $1
+  AND blocked_user = $2`
+
+func deleteBlockRelation(ctx context.Context, tx pgx.Tx, originUser, blockedUser uuid.UUID) error {
+	result, err := tx.Exec(ctx, sqlDeleteBlockRelation, originUser, blockedUser)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+
+	// It was deleted
+	return nil
+}
+
+func (ds *DataStore) RemoveBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) ([]*User, error) {
+	tx, err := ds.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Delete the block relation
+	if err := deleteBlockRelation(ctx, tx, originUser, blockedUser); err != nil {
+		return nil, err
+	}
+
+	// Get the new block list
+	users, err := getUserBlockList(ctx, tx, originUser)
 	if err != nil {
 		return nil, err
 	}
 
+	// Commit the transaction
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	// Return the new block list
 	return users, nil
 }

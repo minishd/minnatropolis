@@ -23,7 +23,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-//go:embed sql/migrations/*.sql
+//go:embed migrations/*.sql
 var embedMigrations embed.FS
 
 func run(rootCtx context.Context) error {
@@ -83,7 +83,7 @@ func run(rootCtx context.Context) error {
 	}
 	stdDB := stdlib.OpenDBFromPool(pool)
 	log.Println("running migrations")
-	if err := goose.UpContext(ctx, stdDB, "sql/migrations"); err != nil {
+	if err := goose.UpContext(ctx, stdDB, "migrations"); err != nil {
 		return err
 	}
 	if err := stdDB.Close(); err != nil {

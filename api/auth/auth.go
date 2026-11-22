@@ -46,7 +46,7 @@ func (h *Handlers) issueSessionToken(ctx context.Context, forUser uuid.UUID) (to
 	// then try to add it to DB
 	token = rand.Text()
 	expiresAt := sessionTokenExpiryNow()
-	err = h.ds.InsertSessionToken(ctx, forUser, token, expiresAt)
+	err = h.ds.CreateSessionToken(ctx, forUser, token, expiresAt)
 	if err != nil {
 		return
 	}
