@@ -1,7 +1,8 @@
 package web
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"log"
@@ -159,9 +160,8 @@ func ParseBody[Req any](r *http.Request) (req Req, err error) {
 // Parses and validates JSON
 func ParseJSON[Req any](data io.Reader) (req Req, err error) {
 	// Decode body
-	dec := json.NewDecoder(data)
-	dec.DisallowUnknownFields()
-	if err = dec.Decode(&req); err != nil {
+	dec := jsontext.NewDecoder(data, json.RejectUnknownMembers(true))
+	if err = json.UnmarshalDecode(dec, &req); err != nil {
 		err = ErrBodyMalformed
 		return
 	}
@@ -179,7 +179,8 @@ func SendRes[Res any](w http.ResponseWriter, status int, res Res) (err error) {
 	// Set Content-Type, encode & send
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	err = json.NewEncoder(w).Encode(res)
+	enc := jsontext.NewEncoder(w)
+	err = json.MarshalEncode(enc, res)
 	return
 }
 

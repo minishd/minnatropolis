@@ -157,11 +157,12 @@ func (ds *DataStore) GetUserByUsername(ctx context.Context, username string) (*U
 
 const sqlUpdateUserLastVisit = `
 UPDATE users
-SET last_visit_at = $2
+SET last_visit_at = $2,
+    last_seen_ip  = $3
 WHERE id = $1`
 
-func (ds *DataStore) UpdateUserLastVisit(ctx context.Context, id uuid.UUID, visitTime time.Time) error {
-	_, err := ds.pool.Exec(ctx, sqlUpdateUserLastVisit, id, visitTime)
+func (ds *DataStore) UpdateUserLastVisit(ctx context.Context, id uuid.UUID, visitTime time.Time, visitIP netip.Addr) error {
+	_, err := ds.pool.Exec(ctx, sqlUpdateUserLastVisit, id, visitTime, visitIP)
 	return err
 }
 

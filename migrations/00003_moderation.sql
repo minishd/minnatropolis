@@ -19,6 +19,10 @@ CREATE TABLE punishments (
     reason          TEXT              NOT NULL DEFAULT ''
 );
 
+-- why: finding users with a specific punishment type
+CREATE INDEX idx_punishments__punishment_type
+ON punishments (punishment_type);
+
 
 --// users
 --// adds last seen ip, mod note, active punishment, ..
@@ -45,11 +49,18 @@ ADD COLUMN role               role_t      NOT NULL DEFAULT 'default'::role_t;
 CREATE INDEX idx_users__last_seen_ip
 ON users (last_seen_ip);
 
--- why: finding all users affected by a punishment
--- .. not yet used
+-- why: finding all users affected by a punishment (not yet used)
+-- .. and finding users with a specific punishment type (used)
 CREATE INDEX idx_users__current_punishment
 ON users (current_punishment);
 
+-- why: searching for users by their username
+CREATE INDEX idx_users__username__prefix
+ON users (username text_pattern_ops);
+
+-- why: searching for users by their role
+CREATE INDEX idx_users__role
+ON users (role);
 
 --// ips that have punishments associated with them
 
@@ -104,6 +115,8 @@ ON audit_log (log_type);
 -- +goose Down
 DROP TABLE audit_log;
 DROP TYPE log_type_t;
+
+DROP INDEX idx_users__username__prefix;
 
 ALTER TABLE users
 DROP COLUMN role,

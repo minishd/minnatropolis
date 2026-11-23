@@ -8,6 +8,7 @@ import (
 	"github.com/minishd/minnatropolis/api/chat"
 	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/web"
+	"github.com/minishd/minnatropolis/api/webtypes"
 	"github.com/minishd/minnatropolis/datastore"
 )
 
@@ -22,11 +23,10 @@ func NewHandlers(ds *datastore.DataStore, rh *room.Handler, ch *chat.Handler) *H
 }
 
 func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
-	type punishmentType string
 	type punishmentInfo struct {
 		StartedAt time.Time
 		EndsAt    *time.Time
-		Type      punishmentType
+		Type      webtypes.PunishmentType
 		Reason    string
 	}
 	type meRes struct {
@@ -38,10 +38,11 @@ func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request, session *dat
 
 	var punishInfo *punishmentInfo
 	if punish := session.ForUser.CurrentPunishment; punish != nil && !punish.IsHidden() {
+		wpt := webtypes.WPunishmentType(punish.PunishmentType)
 		punishInfo = &punishmentInfo{
 			StartedAt: punish.CreatedAt,
 			EndsAt:    punish.ExpiresAt,
-			Type:      punishmentType(punish.PunishmentType),
+			Type:      wpt,
 			Reason:    punish.Reason,
 		}
 	}

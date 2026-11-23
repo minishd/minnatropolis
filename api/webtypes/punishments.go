@@ -1,30 +1,15 @@
-package web
-
-// This file contains models to be used by request or response types
-// Some types may map 1-to-1, but we still want to keep them separate
-// from datastore types...
-// The ones here will usually implement MarshalJSON and such
+package webtypes
 
 import (
-	"encoding/json"
-	"fmt"
+	"encoding/json/v2"
 
 	"github.com/minishd/minnatropolis/datastore"
 )
 
-type UnmarshalError struct{ reason string }
-
-var (
-	ErrInvalidEnum = &UnmarshalError{"enum value is invalid"}
-)
-
-func (ue *UnmarshalError) Error() string {
-	return fmt.Sprintf("unmarshal error (%s)", ue.reason)
-}
-
 // Shared read/write API type for punishment types
 type PunishmentType string
 
+// Maps directly to datastore types for now
 const (
 	PunishmentMute      = PunishmentType(datastore.PunishmentMute)
 	PunishmentBan       = PunishmentType(datastore.PunishmentBan)
@@ -57,4 +42,14 @@ func (pt *PunishmentType) UnmarshalJSON(b []byte) error {
 
 func (pt PunishmentType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(pt))
+}
+
+func (pt PunishmentType) ToDS() datastore.PunishmentType {
+	// For now
+	return datastore.PunishmentType(pt)
+}
+
+func WPunishmentType(pt datastore.PunishmentType) PunishmentType {
+	// For now.....
+	return PunishmentType(pt)
 }

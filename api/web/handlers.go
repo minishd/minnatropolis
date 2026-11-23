@@ -82,7 +82,8 @@ func requireAuth(ds *datastore.DataStore, next SessionHandler,
 		// already recently
 		if time.Since(user.LastVisitAt) >= lastVisitUpdateMinInterval {
 			ctx := r.Context()
-			if err = ds.UpdateUserLastVisit(ctx, user.ID, time.Now()); err != nil {
+			ip := GetIP(r)
+			if err = ds.UpdateUserLastVisit(ctx, user.ID, time.Now(), ip); err != nil {
 				// We could log the error and move on
 				// but if the DB isn't working there is probably
 				// an issue anyway

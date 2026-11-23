@@ -14,12 +14,9 @@ type Rows interface {
 	Scan(dest ...any) error
 }
 
-// var typScanner = reflect.TypeFor[sql.Scanner]()
-
 func needsFlatten(typ reflect.Type) bool {
 	_, ok := registry[typ]
 	return ok
-	// return typ.Kind() == reflect.Struct && !typ.Implements(typScanner)
 }
 
 // Wrapper type that we use to handle nullable structs

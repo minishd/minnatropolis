@@ -64,3 +64,22 @@ func scanStringType[T ~string](src any) T {
 		panic("unsupported scan type")
 	}
 }
+
+// Shared sort-direction type for search queries
+type SortDirection int
+
+const (
+	SortAscending = iota
+	SortDescending
+)
+
+func (sd SortDirection) SQL() string {
+	switch sd {
+	case SortAscending:
+		return "ASC"
+	case SortDescending:
+		return "DESC"
+	default:
+		panic("invalid sort direction into sql")
+	}
+}

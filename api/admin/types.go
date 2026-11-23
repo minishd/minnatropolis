@@ -1,53 +1,42 @@
 package admin
 
 import (
-	"github.com/minishd/minnatropolis/api/web"
+	"github.com/minishd/minnatropolis/api/webtypes"
+	"github.com/minishd/minnatropolis/datastore"
 )
 
-type usersSort string
+type usersSortBy string
 
 const (
-	usersSortUsername     usersSort = "username"
-	usersSortEmail        usersSort = "email"
-	usersSortRegisterDate usersSort = "register_date"
-	usersSortLastBanDate  usersSort = "last_ban_date"
-	usersSortLastSeenDate usersSort = "last_seen_date"
+	usersSortUsername     usersSortBy = "username"
+	usersSortRegisterDate usersSortBy = "register_date"
+	usersSortLastBanDate  usersSortBy = "last_ban_date"
+	usersSortLastSeenDate usersSortBy = "last_seen_date"
 )
 
-func (us *usersSort) unmarshal(s string) error {
+func (sb *usersSortBy) UnmarshalText(b []byte) error {
 	// Make sure it's a valid variant
-	switch usersSort(s) {
-	case usersSortUsername, usersSortEmail, usersSortRegisterDate,
+	switch usersSortBy(b) {
+	case usersSortUsername, usersSortRegisterDate,
 		usersSortLastBanDate, usersSortLastSeenDate:
-		*us = usersSort(s)
+		*sb = usersSortBy(b)
 		return nil
 	default:
-		return web.ErrInvalidEnum
+		return webtypes.ErrInvalidEnum
 	}
 }
 
-func (us *usersSort) UnmarshalText(b []byte) error {
-	return us.unmarshal(string(b))
-}
-
-type sortOrder string
-
-const (
-	sortOrderAsc  sortOrder = "asc"
-	sortOrderDesc sortOrder = "desc"
-)
-
-func (so *sortOrder) unmarshal(s string) error {
-	// Make sure it's a valid variant
-	switch sortOrder(s) {
-	case sortOrderAsc, sortOrderDesc:
-		*so = sortOrder(s)
-		return nil
+func (sb usersSortBy) ToDS() datastore.UserSearchSortType {
+	switch sb {
+	case usersSortUsername:
+		return datastore.UserSearchSortUsername
+	case usersSortRegisterDate:
+		return datastore.UserSearchSortRegisterDate
+	case usersSortLastBanDate:
+		return datastore.UserSearchSortLastBanDate
+	case usersSortLastSeenDate:
+		return datastore.UserSearchSortLastSeenDate
 	default:
-		return web.ErrInvalidEnum
+		panic("invalid users-sort to datastore")
 	}
-}
-
-func (so *sortOrder) UnmarshalText(b []byte) error {
-	return so.unmarshal(string(b))
 }
