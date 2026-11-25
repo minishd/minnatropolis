@@ -1,4 +1,4 @@
-package api
+package parties
 
 import (
 	"net/http"
@@ -12,9 +12,13 @@ import (
 )
 
 // Shared state for /parties API endpoint handlers
-type partiesHandlers struct {
+type Handlers struct {
 	ds *datastore.DataStore
 	ch *chat.Handler
+}
+
+func NewHandlers(ds *datastore.DataStore, ch *chat.Handler) *Handlers {
+	return &Handlers{ds, ch}
 }
 
 type partyMember struct {
@@ -33,9 +37,8 @@ type partyRes struct {
 }
 
 // Helper for looking up a party's members & sending it back
-func (h *partiesHandlers) sendPartyOK(w http.ResponseWriter, r *http.Request, party *datastore.Party) (err error) {
-	ctx := r.Context()
-	users, err := h.ds.GetPartyMembers(ctx, party.ID)
+func (h *Handlers) sendPartyOK(w http.ResponseWriter, r *http.Request, party *datastore.Party) (err error) {
+	users, err := h.ds.GetPartyMembers(party.ID)
 	if err != nil {
 		return
 	}
@@ -59,9 +62,8 @@ func (h *partiesHandlers) sendPartyOK(w http.ResponseWriter, r *http.Request, pa
 
 // Returns the party the user is in
 // (Needs authentication)
-func (h *partiesHandlers) handleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
-	ctx := r.Context()
-	party, err := h.ds.GetUserParty(ctx, session.ForUser.ID)
+func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	party, err := h.ds.GetUserParty(session.ForUser.ID)
 	if err != nil {
 		return
 	}
@@ -76,7 +78,7 @@ func (h *partiesHandlers) handleMe(w http.ResponseWriter, r *http.Request, sessi
 
 // Creates a party with the user in it
 // (Needs authentication)
-func (h *partiesHandlers) handleCreate(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleCreate(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type createReq struct {
 		// Further validation of name is implemented
 		// as a DB constraint
@@ -84,15 +86,14 @@ func (h *partiesHandlers) handleCreate(w http.ResponseWriter, r *http.Request, s
 	}
 
 	// Parse request
-	req, err := web.ParseReq[createReq](r)
+	req, err := web.ParseBody[createReq](r)
 	if err != nil {
 		return
 	}
 
 	// Try to create in DB
-	ctx := r.Context()
 	name := strings.TrimSpace(req.Name)
-	party, err := h.ds.CreateParty(ctx, session.ForUser.ID, name)
+	party, err := h.ds.CreatePartyWithUser(session.ForUser.ID, name)
 	switch err {
 	case datastore.ErrNotUnique:
 		err = web.ErrAlreadyInParty
@@ -111,20 +112,19 @@ func (h *partiesHandlers) handleCreate(w http.ResponseWriter, r *http.Request, s
 
 // Adds the user to a party by its ID
 // (Needs authentication)
-func (h *partiesHandlers) handleJoin(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleJoin(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type joinReq struct {
 		PartyID uuid.UUID
 	}
 
 	// Parse request
-	req, err := web.ParseReq[joinReq](r)
+	req, err := web.ParseBody[joinReq](r)
 	if err != nil {
 		return
 	}
 
 	// Try to join
-	ctx := r.Context()
-	party, err := h.ds.InsertPartyMember(ctx, req.PartyID, session.ForUser.ID)
+	party, err := h.ds.AddUserToParty(req.PartyID, session.ForUser.ID)
 	switch err {
 	case datastore.ErrNotUnique:
 		err = web.ErrAlreadyInParty
@@ -143,9 +143,8 @@ func (h *partiesHandlers) handleJoin(w http.ResponseWriter, r *http.Request, ses
 
 // Removes the user from their party
 // (Needs authentication)
-func (h *partiesHandlers) handleLeave(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
-	ctx := r.Context()
-	err = h.ds.DeletePartyMember(ctx, session.ForUser.ID)
+func (h *Handlers) HandleLeave(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	err = h.ds.RemoveUserFromParty(session.ForUser.ID)
 	if err == datastore.ErrNotFound {
 		err = web.ErrNotInParty
 		return

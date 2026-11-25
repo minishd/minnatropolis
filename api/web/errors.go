@@ -25,6 +25,7 @@ var (
 	ErrInvalidCredentials = &Error{400, "invalid credentials"}
 	ErrUsernameTaken      = &Error{400, "username taken"}
 	ErrUsernameInvalid    = &Error{400, "username invalid"}
+	ErrUsernameFiltered   = &Error{400, "username filtered"}
 
 	ErrNoSuchUser     = &Error{404, "no such user"}
 	ErrAlreadyBlocked = &Error{400, "user is already blocked"}
@@ -37,10 +38,15 @@ var (
 
 	ErrNotInMap = &Error{400, "not in a map"}
 
+	ErrNoBanned     = &Error{403, "banned account is disallowed"}
+	ErrNoPermission = &Error{403, "missing permission"}
+	ErrNoRegister   = &Error{403, "registration is disallowed"}
+
 	ErrUnauthorized    = &Error{401, "unauthorized"}
 	ErrTooManyRequests = &Error{429, "too many requests"}
 	ErrNotJSON         = &Error{415, "only json accepted"}
+	ErrQueryMalformed  = &Error{400, "request query malformed"}
 	ErrBodyMalformed   = &Error{400, "request body malformed"}
-	ErrBodyInvalid     = &Error{400, "request body fails validation"}
+	ErrRequestInvalid  = &Error{400, "request fails validation"}
 	ErrServerInternal  = &Error{500, "internal server error"}
 )

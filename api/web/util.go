@@ -1,0 +1,189 @@
+package web
+
+import (
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
+	"io"
+	"log"
+	"net/http"
+	"net/netip"
+	"net/url"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/gorilla/schema"
+	"github.com/minishd/minnatropolis/datastore"
+)
+
+var validate *validator.Validate = validator.New(
+	validator.WithRequiredStructEnabled(),
+	validator.WithTagNameFuncBlankOmit(),
+)
+var schemaDecoder *schema.Decoder = schema.NewDecoder()
+
+const kSession = "session"
+
+func SetAuthCookie(w http.ResponseWriter, token string) {
+	var maxAge int
+	if token != "" {
+		maxAge = 3600 * 24 * 7
+	} else {
+		// we are clearing the cookie,
+		// so set max age to 0 as well
+		maxAge = 0
+	}
+
+	cookie := &http.Cookie{
+		Name:        kSession,
+		Value:       token,
+		MaxAge:      maxAge,
+		SameSite:    http.SameSiteStrictMode,
+		HttpOnly:    true,
+		Secure:      true,
+		Partitioned: true,
+		Path:        "/",
+	}
+	http.SetCookie(w, cookie)
+}
+
+// Reads the IP of a request
+func GetIP(r *http.Request) netip.Addr {
+	// First, try x-forwarded-for header
+	xff := r.Header.Get("x-forwarded-for")
+	if xff != "" {
+		addr, err := netip.ParseAddr(xff)
+		if err == nil {
+			return addr
+		}
+	}
+
+	// If that doesn't work, use connection IP
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		log.Println("couldn't read IP from request", err)
+		return netip.IPv4Unspecified()
+	}
+
+	// That worked, return the connection IP
+	return ap.Addr()
+}
+
+// Reads and looks up a provided session token
+func GetAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionToken, err error) {
+	// Read token from cookie
+	cookie, err_ := r.Cookie(kSession)
+	if err_ != nil {
+		// [http.Request.Cookie] only returns an error
+		// if the cookie was not found.
+		// (We do not consider that an error)
+		return
+	}
+	token := cookie.Value
+
+	// Skip if it's obviously not valid
+	if token == "" {
+		return
+	}
+
+	// Look up token
+	st, err = ds.LookupSessionToken(token)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+// Validates a request struct
+func validateReq(req any) (err error) {
+	// Pass to validator
+	if err = validate.Struct(req); err != nil {
+		// Is the struct tag just invalid?
+		if _, ok := errors.AsType[*validator.InvalidValidationError](err); ok {
+			// `validate` struct tag is malformed.
+			// This is our fault and should be fixed
+			// before shipping
+			panic(err)
+		}
+
+		// No the struct tag wasn't invalid,
+		// so it is the user's fault
+		err = ErrRequestInvalid
+		return
+	}
+
+	// There was no validation error
+	return
+}
+
+// Parses the querystring of a request
+func ParseQuery[Req any](r *http.Request) (req Req, err error) {
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		err = ErrQueryMalformed
+		return
+	}
+
+	// Unmarshal querystring vaules
+	if err = schemaDecoder.Decode(&req, values); err != nil {
+		// I don't know of any error here that isn't
+		// the user's fault
+		// Unlike JSON we already handled malformed requests,
+		// so we don't return [ErrQueryMalformed] here
+		err = ErrRequestInvalid
+		return
+	}
+
+	// Pass to validator
+	if err = validateReq(req); err != nil {
+		return
+	}
+
+	// It seems ok
+	return
+}
+
+// Parses the body of a request from JSON
+func ParseBody[Req any](r *http.Request) (req Req, err error) {
+	// Only proceed if Content-Type is JSON
+	// TODO: make this more lenient?
+	contentType := r.Header.Get("Content-Type")
+	if contentType != "application/json" {
+		err = ErrNotJSON
+		return
+	}
+
+	return ParseJSON[Req](r.Body)
+}
+
+// Parses and validates JSON
+func ParseJSON[Req any](data io.Reader) (req Req, err error) {
+	// Decode body
+	dec := jsontext.NewDecoder(data, json.RejectUnknownMembers(true))
+	if err = json.UnmarshalDecode(dec, &req); err != nil {
+		err = ErrBodyMalformed
+		return
+	}
+
+	// Validate
+	if err = validateReq(req); err != nil {
+		return
+	}
+
+	return
+}
+
+// Send back a JSON response
+func SendRes[Res any](w http.ResponseWriter, status int, res Res) (err error) {
+	// Set Content-Type, encode & send
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	enc := jsontext.NewEncoder(w)
+	err = json.MarshalEncode(enc, res)
+	return
+}
+
+// Send back a JSON response with status `200 OK`
+func SendResOK[Res any](w http.ResponseWriter, res Res) error {
+	return SendRes(w, http.StatusOK, res)
+}

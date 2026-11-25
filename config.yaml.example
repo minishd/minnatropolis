@@ -22,3 +22,13 @@ filter:
   pictureprefixes:
     - protag_
     - $protag_
+
+textfilter:
+  chat:
+    standins:
+    strings:
+    words:
+  usernames:
+    standins:
+    strings:
+    words:

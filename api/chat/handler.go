@@ -14,6 +14,7 @@ import (
 	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/web"
 	"github.com/minishd/minnatropolis/datastore"
+	"github.com/minishd/minnatropolis/textfilter"
 	"golang.org/x/time/rate"
 )
 
@@ -21,18 +22,19 @@ import (
 // Implements [gws.Event]
 type Handler struct {
 	ds *datastore.DataStore
-
 	rh *room.Handler // for map chat
+	tf *textfilter.TextFilter
 
 	// Keyed by connection because one account can have multiple tabs open
 	users   map[*User]struct{}
 	usersMu sync.RWMutex
 }
 
-func NewHandler(ds *datastore.DataStore, rh *room.Handler) *Handler {
+func NewHandler(ds *datastore.DataStore, rh *room.Handler, tf *textfilter.TextFilter) *Handler {
 	return &Handler{
 		ds: ds,
 		rh: rh,
+		tf: tf,
 
 		users: make(map[*User]struct{}),
 	}
@@ -52,8 +54,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	}
 
 	// Look up blocklist
-	ctx := r.Context()
-	blocked, err := h.ds.GetBlockedUsers(ctx, st.ForUser.ID)
+	blocked, err := h.ds.GetBlockedUsers(st.ForUser.ID)
 	if err != nil {
 		log.Println("blocklist lookup failed:", err)
 		return false
@@ -64,7 +65,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	}
 
 	// Look up party
-	party, err := h.ds.GetUserParty(ctx, st.ForUser.ID)
+	party, err := h.ds.GetUserParty(st.ForUser.ID)
 	if err != nil {
 		log.Println("party lookup failed:", err)
 		return false
@@ -81,6 +82,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		limiter:     rate.NewLimiter(rate.Every(sendRateLimitEvery), sendRateLimitBurst),
 		blocklist:   blocklist,
 		partyID:     partyID,
+		punishment:  st.ForUser.CurrentPunishment,
 	})
 
 	// Authorize connection
@@ -122,7 +124,7 @@ func (h *Handler) OnMessage(c *gws.Conn, msg *gws.Message) {
 	// No empty messages or control characters
 	content := strings.TrimSpace(req.Content)
 	if content == "" || strings.ContainsFunc(content, unicode.IsControl) {
-		u.SendError(web.ErrBodyInvalid)
+		u.SendError(web.ErrRequestInvalid)
 		return
 	}
 

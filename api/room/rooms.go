@@ -35,13 +35,13 @@ func (h *Handler) hasRoom(roomID int32) bool {
 // receive any more game events from their current
 // room.
 func (h *Handler) unsetRoom(m *user.User) {
-	d := m.Data()
+	d := m.GetData()
 
 	// Remove them from their room
 	room := h.rooms[d.RoomID]
 	room.Lock()
 	room.members = slices.DeleteFunc(room.members, func(rm *user.User) bool {
-		return rm.Data().CID == d.CID
+		return rm.GetData().CID == d.CID
 	})
 	room.Unlock()
 }
@@ -63,7 +63,7 @@ func (h *Handler) setRoom(m *user.User, roomID int32) {
 	room.Unlock()
 
 	// Set their room ID
-	m.Data().RoomID = roomID
+	m.GetData().RoomID = roomID
 }
 
 // Whether or not we should skip packets in a room.
@@ -71,26 +71,32 @@ func (h *Handler) arePacketsSkippedMap(us *user.ClientData) bool {
 	return h.filters.IsMapSingleplayer(us.RoomID)
 }
 
-func hasBlocked(source *user.ClientData, subject *user.ClientData) (ok bool) {
+func hasBlocked(source, subject *user.ClientData) (ok bool) {
 	_, ok = source.Blocklist[subject.AccountUUID]
 	return
 }
 
 // Whether or not we should skip packets about a player.
-func (h *Handler) arePacketsSkippedPlayer(us *user.ClientData, them *user.ClientData) bool {
+func (h *Handler) arePacketsSkippedPlayer(from, to *user.ClientData) bool {
 	// Is it ourselves? We already know what we sent
-	if us.CID == them.CID {
+	if from.CID == to.CID {
+		return true
+	}
+
+	// Does the subject have a punishment that hides them?
+	if from.Punishment != nil && from.Punishment.DoesMakePlayerInvisible() {
+		// Yes we do
 		return true
 	}
 
 	// Lock blocklists so we can check safely
-	us.BlocklistMu.RLock()
-	them.BlocklistMu.RLock()
-	defer us.BlocklistMu.RUnlock()
-	defer them.BlocklistMu.RUnlock()
+	from.BlocklistMu.RLock()
+	to.BlocklistMu.RLock()
+	defer from.BlocklistMu.RUnlock()
+	defer to.BlocklistMu.RUnlock()
 
-	// Did we block them, or they block us?
-	return hasBlocked(us, them) || hasBlocked(them, us)
+	// Did the receiver block the sender, or the sender block the receiver?
+	return hasBlocked(from, to) || hasBlocked(to, from)
 }
 
 // Send a message to everyone else in the room.
@@ -105,7 +111,9 @@ func (h *Handler) shareToRoom(d *user.ClientData, msgs ...any) {
 	room := h.rooms[d.RoomID]
 	room.RLock()
 	for _, m := range room.members {
-		if h.arePacketsSkippedPlayer(d, m.Data()) {
+		// Here we're the "from" because the packet
+		// is about us
+		if h.arePacketsSkippedPlayer(d, m.GetData()) {
 			continue
 		}
 
@@ -121,7 +129,7 @@ func (h *Handler) shareToRoom(d *user.ClientData, msgs ...any) {
 // them in the new map, so it is appropriate
 // for actual game map transitions
 func (h *Handler) changeRoom(u *user.User, newID int32) {
-	d := u.Data()
+	d := u.GetData()
 
 	// If the two rooms are different,
 	// we need to handle leaving the other room
@@ -148,8 +156,10 @@ func (h *Handler) changeRoom(u *user.User, newID int32) {
 		room := h.rooms[newID]
 		room.RLock()
 		for _, m := range room.members {
-			md := m.Data()
-			if h.arePacketsSkippedPlayer(d, md) {
+			md := m.GetData()
+			// Here the member is the "from" because
+			// the packet is about them
+			if h.arePacketsSkippedPlayer(md, d) {
 				continue
 			}
 			introMsgs = append(introMsgs, md.GetIntroMessages()...)

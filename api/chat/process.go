@@ -4,50 +4,75 @@ package chat
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/minishd/minnatropolis/api/web"
+	"github.com/minishd/minnatropolis/datastore"
 )
 
 func (h *Handler) processMessage(u *User, channel Channel, content string) {
 	d := u.getData()
 
+	// Filter message's text
+	content = h.tf.ReplaceAll(content, "♥", true)
+
 	// Figure out who should get it
 	var shouldGet func(them *clientData) bool
-	switch channel {
+	if d.punishment == nil {
+		// No punishment, handle normally..
 
-	case ChannelGlobal:
-		shouldGet = func(them *clientData) bool { return true }
+		switch channel {
 
-	case ChannelMap:
-		roommates, ok := h.rh.GetRoommates(d.accountUUID)
-		if !ok {
-			// Not in-game
-			u.SendError(web.ErrNotInMap)
-			return
+		case ChannelGlobal:
+			shouldGet = func(them *clientData) bool { return true }
+
+		case ChannelMap:
+			roommates, ok := h.rh.GetRoommates(d.accountUUID)
+			if !ok {
+				// Not in-game
+				u.SendError(web.ErrNotInMap)
+				return
+			}
+			shouldGet = func(them *clientData) bool {
+				_, ok := roommates[them.accountUUID]
+				return ok
+			}
+
+		case ChannelParty:
+			partyID, ok := d.getParty()
+			if !ok {
+				u.SendError(web.ErrNotInParty)
+				return
+			}
+			shouldGet = func(them *clientData) bool {
+				theirPartyID, ok := them.getParty()
+				return ok && theirPartyID == partyID
+			}
+
+		default:
+			// If we validated a channel,
+			// we should also be handling it
+			panic("unhandled chat channel")
+
 		}
-		shouldGet = func(them *clientData) bool {
-			_, ok := roommates[them.accountUUID]
-			return ok
-		}
+	} else {
+		// There is a punishment, handle accordingly
 
-	case ChannelParty:
-		partyID, ok := d.getParty()
-		if !ok {
-			u.SendError(web.ErrNotInParty)
-			return
-		}
-		shouldGet = func(them *clientData) bool {
-			theirPartyID, ok := them.getParty()
-			return ok && theirPartyID == partyID
-		}
+		switch d.punishment.PunishmentType {
+		// For regular mutes and bans, nobody gets it
+		case datastore.PunishmentMute, datastore.PunishmentBan:
+			log.Println("a muted user spoke", d.accountUUID)
+			shouldGet = func(_ *clientData) bool { return false }
 
-	default:
-		// If we validated a channel,
-		// we should also be handling it
-		panic("unhandled chat channel")
+		// For silent ban, user gets their own message
+		case datastore.PunishmentBanSilent:
+			shouldGet = func(them *clientData) bool { return them.accountUUID == d.accountUUID }
 
+		default:
+			panic("unhandled punishment type")
+		}
 	}
 
 	h.broadcast(d, shouldGet, messageS2C{

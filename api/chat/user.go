@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/lxzan/gws"
 	"github.com/minishd/minnatropolis/api/web"
+	"github.com/minishd/minnatropolis/datastore"
 	"golang.org/x/time/rate"
 )
 
@@ -26,6 +27,7 @@ const (
 type clientData struct {
 	accountUUID uuid.UUID
 	name        string
+	punishment  *datastore.Punishment
 
 	limiter *rate.Limiter
 

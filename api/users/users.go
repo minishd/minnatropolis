@@ -1,4 +1,4 @@
-package api
+package users
 
 import (
 	"net/http"
@@ -8,26 +8,50 @@ import (
 	"github.com/minishd/minnatropolis/api/chat"
 	"github.com/minishd/minnatropolis/api/room"
 	"github.com/minishd/minnatropolis/api/web"
+	"github.com/minishd/minnatropolis/api/webtypes"
 	"github.com/minishd/minnatropolis/datastore"
 )
 
-type usersHandlers struct {
+type Handlers struct {
 	ds *datastore.DataStore
 	rh *room.Handler
 	ch *chat.Handler
 }
 
-func (h *usersHandlers) handleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func NewHandlers(ds *datastore.DataStore, rh *room.Handler, ch *chat.Handler) *Handlers {
+	return &Handlers{ds, rh, ch}
+}
+
+func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	type punishmentInfo struct {
+		StartedAt time.Time
+		EndsAt    *time.Time
+		Type      webtypes.PunishmentType
+		Reason    string
+	}
 	type meRes struct {
-		AccountID uuid.UUID
-		Username  string
-		CreatedAt time.Time
+		AccountID  uuid.UUID
+		Username   string
+		CreatedAt  time.Time
+		Punishment *punishmentInfo
+	}
+
+	var punishInfo *punishmentInfo
+	if punish := session.ForUser.CurrentPunishment; punish != nil && !punish.IsHidden() {
+		wpt := webtypes.WPunishmentType(punish.PunishmentType)
+		punishInfo = &punishmentInfo{
+			StartedAt: punish.CreatedAt,
+			EndsAt:    punish.ExpiresAt,
+			Type:      wpt,
+			Reason:    punish.Reason,
+		}
 	}
 
 	web.SendResOK(w, meRes{
-		AccountID: session.ForUser.ID,
-		Username:  session.ForUser.Username,
-		CreatedAt: session.ForUser.CreatedAt,
+		AccountID:  session.ForUser.ID,
+		Username:   session.ForUser.Username,
+		CreatedAt:  session.ForUser.CreatedAt,
+		Punishment: punishInfo,
 	})
 	return
 }
@@ -53,10 +77,9 @@ func usersToBlockList(users []*datastore.User) []blocklistEntry {
 
 // Returns all accounts the user has blocked
 // (Needs authentication)
-func (h *usersHandlers) handleBlockList(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleBlockList(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	// Look up user's block list
-	ctx := r.Context()
-	users, err := h.ds.GetBlockedUsers(ctx, session.ForUser.ID)
+	users, err := h.ds.GetBlockedUsers(session.ForUser.ID)
 	if err != nil {
 		return
 	}
@@ -69,21 +92,20 @@ func (h *usersHandlers) handleBlockList(w http.ResponseWriter, r *http.Request, 
 
 // Adds an account to user's block list
 // (Needs authentication)
-func (h *usersHandlers) handleBlockListAdd(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleBlockListAdd(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type blocklistAddReq struct {
 		UserID uuid.UUID
 	}
 	type blocklistAddRes = blocklistRes
 
 	// Parse request
-	req, err := web.ParseReq[blocklistAddReq](r)
+	req, err := web.ParseBody[blocklistAddReq](r)
 	if err != nil {
 		return
 	}
 
 	// Try to add blocked user
-	ctx := r.Context()
-	users, err := h.ds.InsertBlockRelation(ctx, session.ForUser.ID, req.UserID)
+	users, err := h.ds.AddBlockRelation(session.ForUser.ID, req.UserID)
 	switch err {
 	case datastore.ErrNotUnique:
 		err = web.ErrAlreadyBlocked
@@ -106,21 +128,20 @@ func (h *usersHandlers) handleBlockListAdd(w http.ResponseWriter, r *http.Reques
 
 // Removes an account from user's block list
 // (Needs authentication)
-func (h *usersHandlers) handleBlockListRemove(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+func (h *Handlers) HandleBlockListRemove(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	type blocklistRemoveReq struct {
 		UserID uuid.UUID
 	}
 	type blocklistRemoveRes = blocklistRes
 
 	// Parse request
-	req, err := web.ParseReq[blocklistRemoveReq](r)
+	req, err := web.ParseBody[blocklistRemoveReq](r)
 	if err != nil {
 		return
 	}
 
 	// Try to remove blocked user
-	ctx := r.Context()
-	users, err := h.ds.DeleteBlockRelation(ctx, session.ForUser.ID, req.UserID)
+	users, err := h.ds.RemoveBlockRelation(session.ForUser.ID, req.UserID)
 	if err == datastore.ErrNotFound {
 		err = web.ErrNotBlocked
 		return

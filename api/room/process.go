@@ -24,7 +24,7 @@ func (h *Handler) updatePicture(d *user.ClientData, pic *pt.Picture) {
 }
 
 func (h *Handler) processMessage(u *user.User, m any) {
-	d := u.Data()
+	d := u.GetData()
 
 	switch m := m.(type) {
 
