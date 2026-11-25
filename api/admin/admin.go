@@ -95,8 +95,7 @@ func (h *Handlers) HandleSearchUsers(w http.ResponseWriter, r *http.Request, st 
 	}
 
 	// Make query
-	ctx := r.Context()
-	users, err := h.ds.SearchUsers(ctx, filters, sort, req.Page.Offset, req.Page.PerPage)
+	users, err := h.ds.SearchUsers(filters, sort, req.Page.Offset, req.Page.PerPage)
 	if err != nil {
 		return
 	}
@@ -134,6 +133,18 @@ func (h *Handlers) HandleSearchUsers(w http.ResponseWriter, r *http.Request, st 
 
 	// Return it
 	web.SendResOK(w, results)
+
+	return
+}
+
+func (h *Handlers) HandleCreatePunishment(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
+	type createPunishmentReq struct {
+		UserID    uuid.UUID
+		Reason    string
+		ExpiresAt time.Time
+
+		EnforceByIP, OverrideAnyExisting bool
+	}
 
 	return
 }

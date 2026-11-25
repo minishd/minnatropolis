@@ -23,35 +23,23 @@ JOIN parties p ON p.id = pm.party
 WHERE pm.member_user = $1;`
 
 func getUserParty(ctx context.Context, tx scan2.Querier, userID uuid.UUID) (*Party, error) {
-	party, err := scan2.ScanOne2[Party](ctx, tx, sqlGetUserParty, userID)
-
-	if err != nil {
-		// Are they not in a party?
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	return party, nil
+	return scan2.ScanOne2[Party](ctx, tx, sqlGetUserParty, userID)
 }
 
-func (ds *DataStore) GetUserParty(ctx context.Context, user uuid.UUID) (*Party, error) {
+func (ds *DataStore) GetUserParty(user uuid.UUID) (*Party, error) {
+	ctx := context.Background()
 	return getUserParty(ctx, ds.pool, user)
 }
 
 const getPartyMembers = `
-SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_visit_at, u.last_seen_ip, u.mod_note, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
+SELECT uf.*
 FROM party_members pm
-     JOIN users u       ON u.id = pm.member_user
-LEFT JOIN punishments p ON p.id = u.current_punishment
-                       AND p.is_disabled IS FALSE
-                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+JOIN users_full uf ON uf.id = pm.member_user
 WHERE pm.party = $1
 ORDER BY pm.created_at`
 
-func (ds *DataStore) GetPartyMembers(ctx context.Context, party uuid.UUID) ([]*User, error) {
+func (ds *DataStore) GetPartyMembers(party uuid.UUID) ([]*User, error) {
+	ctx := context.Background()
 	users, err := scan2.ScanMany2[User](ctx, ds.pool, getPartyMembers, party)
 	if err != nil {
 		return nil, err
@@ -106,7 +94,9 @@ func insertPartyMember(ctx context.Context, tx pgx.Tx, partyID, userID uuid.UUID
 }
 
 // Creates a party with the user in it
-func (ds *DataStore) CreatePartyWithUser(ctx context.Context, forUser uuid.UUID, name string) (*Party, error) {
+func (ds *DataStore) CreatePartyWithUser(forUser uuid.UUID, name string) (*Party, error) {
+	ctx := context.Background()
+
 	tx, err := ds.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -135,7 +125,9 @@ func (ds *DataStore) CreatePartyWithUser(ctx context.Context, forUser uuid.UUID,
 }
 
 // Adds a user to a party, then returns the party
-func (ds *DataStore) AddUserToParty(ctx context.Context, party, user uuid.UUID) (*Party, error) {
+func (ds *DataStore) AddUserToParty(party, user uuid.UUID) (*Party, error) {
+	ctx := context.Background()
+
 	tx, err := ds.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -195,12 +187,13 @@ WHERE p.id = $1
   )`
 
 func deletePartyIfEmpty(ctx context.Context, tx pgx.Tx, partyID uuid.UUID) error {
-	_, err := tx.Exec(ctx, sqlDeletePartyIfEmpty, partyID)
-	return err
+	return mustOneFound(tx.Exec(ctx, sqlDeletePartyIfEmpty, partyID))
 }
 
 // Removes a user from their party, deleting it if it's empty
-func (ds *DataStore) RemoveUserFromParty(ctx context.Context, user uuid.UUID) error {
+func (ds *DataStore) RemoveUserFromParty(user uuid.UUID) error {
+	ctx := context.Background()
+
 	tx, err := ds.pool.Begin(ctx)
 	if err != nil {
 		return err

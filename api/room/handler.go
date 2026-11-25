@@ -98,8 +98,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 		punishment = st.ForUser.CurrentPunishment
 
 		// Also look up blocklist
-		ctx := r.Context()
-		users, err := h.ds.GetBlockedUsers(ctx, st.ForUser.ID)
+		users, err := h.ds.GetBlockedUsers(st.ForUser.ID)
 		if err != nil {
 			log.Println("blocklist lookup failed:", err)
 			// still let them through

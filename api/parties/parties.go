@@ -38,8 +38,7 @@ type partyRes struct {
 
 // Helper for looking up a party's members & sending it back
 func (h *Handlers) sendPartyOK(w http.ResponseWriter, r *http.Request, party *datastore.Party) (err error) {
-	ctx := r.Context()
-	users, err := h.ds.GetPartyMembers(ctx, party.ID)
+	users, err := h.ds.GetPartyMembers(party.ID)
 	if err != nil {
 		return
 	}
@@ -64,8 +63,7 @@ func (h *Handlers) sendPartyOK(w http.ResponseWriter, r *http.Request, party *da
 // Returns the party the user is in
 // (Needs authentication)
 func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
-	ctx := r.Context()
-	party, err := h.ds.GetUserParty(ctx, session.ForUser.ID)
+	party, err := h.ds.GetUserParty(session.ForUser.ID)
 	if err != nil {
 		return
 	}
@@ -94,9 +92,8 @@ func (h *Handlers) HandleCreate(w http.ResponseWriter, r *http.Request, session 
 	}
 
 	// Try to create in DB
-	ctx := r.Context()
 	name := strings.TrimSpace(req.Name)
-	party, err := h.ds.CreatePartyWithUser(ctx, session.ForUser.ID, name)
+	party, err := h.ds.CreatePartyWithUser(session.ForUser.ID, name)
 	switch err {
 	case datastore.ErrNotUnique:
 		err = web.ErrAlreadyInParty
@@ -127,8 +124,7 @@ func (h *Handlers) HandleJoin(w http.ResponseWriter, r *http.Request, session *d
 	}
 
 	// Try to join
-	ctx := r.Context()
-	party, err := h.ds.AddUserToParty(ctx, req.PartyID, session.ForUser.ID)
+	party, err := h.ds.AddUserToParty(req.PartyID, session.ForUser.ID)
 	switch err {
 	case datastore.ErrNotUnique:
 		err = web.ErrAlreadyInParty
@@ -148,8 +144,7 @@ func (h *Handlers) HandleJoin(w http.ResponseWriter, r *http.Request, session *d
 // Removes the user from their party
 // (Needs authentication)
 func (h *Handlers) HandleLeave(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
-	ctx := r.Context()
-	err = h.ds.RemoveUserFromParty(ctx, session.ForUser.ID)
+	err = h.ds.RemoveUserFromParty(session.ForUser.ID)
 	if err == datastore.ErrNotFound {
 		err = web.ErrNotInParty
 		return

@@ -35,6 +35,21 @@ func init() {
 	scan2.Register2[User]()
 	scan2.Register2[Punishment]()
 	scan2.Register2[Party]()
+	scan2.Register2[NewUser]()
+	scan2.Register2[PunishmentUser]()
+	scan2.Register2[PunishmentIP]()
+}
+
+// Make sure an Exec() call affected exactly
+// one row
+func mustOneFound(ct pgconn.CommandTag, err error) error {
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() != 1 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Convert Postgres error to one we defined

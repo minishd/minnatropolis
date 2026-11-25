@@ -30,13 +30,13 @@ const (
 func (st UserSearchSortType) SQL() string {
 	switch st {
 	case UserSearchSortUsername:
-		return "u.username"
+		return "uf.username"
 	case UserSearchSortRegisterDate:
-		return "u.created_at"
+		return "uf.created_at"
 	case UserSearchSortLastBanDate:
-		return "p.created_at"
+		return "uf.p_created_at"
 	case UserSearchSortLastSeenDate:
-		return "u.last_visit_at"
+		return "uf.p_last_visit_at"
 	default:
 		panic("invalid user search sort type to sql")
 	}
@@ -48,11 +48,8 @@ type UserSearchSort struct {
 }
 
 const sqlSearchUsers = `
-SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_visit_at, u.last_seen_ip, u.mod_note, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
-FROM users u
-LEFT JOIN punishments p ON p.id = u.current_punishment
-                       AND p.is_disabled IS FALSE
-                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+SELECT uf.*
+FROM users_full uf
 {shares_ip_join}
 {where}
 ORDER BY {sort_column} {sort_direction}
@@ -63,22 +60,24 @@ const sqlSearchUsersSharesIPJoin = `
 LEFT JOIN users u2 ON u2.id = @shares_ip_with`
 
 const sqlSearchUsersFilterUsername = `
-u.username ILIKE
+uf.username ILIKE
 	replace( replace( replace( @username, '\', '\\' ), '%', '\%' ), '_', '\_' ) || '%'`
 
 const sqlSearchUsersFilterUserID = `
-u.id = @user_id`
+uf.id = @user_id`
 
 const sqlSearchUsersFilterHasPunishment = `
-p.punishment_type = @punishment_type`
+uf.p_punishment_type = @punishment_type`
 
 const sqlSearchUsersFilterSharesIPWith = `
-u.last_seen_ip = u2.last_seen_ip`
+uf.last_seen_ip = u2.last_seen_ip`
 
 const sqlSearchUsersFilterHasRole = `
-u.role = @role`
+uf.role = @role`
 
-func (ds *DataStore) SearchUsers(ctx context.Context, filters UserSearchFilters, sort UserSearchSort, offset, limit uint64) ([]*User, error) {
+func (ds *DataStore) SearchUsers(filters UserSearchFilters, sort UserSearchSort, offset, limit uint64) ([]*User, error) {
+	ctx := context.Background()
+
 	// Named args for filters
 	args := pgx.StrictNamedArgs{}
 

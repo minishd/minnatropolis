@@ -2,6 +2,7 @@ package scan2
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -13,7 +14,17 @@ type Querier interface {
 
 func ScanOne2[T any](ctx context.Context, q Querier, sql string, args ...any) (*T, error) {
 	row := q.QueryRow(ctx, sql, args...)
-	return Scan2[T](row)
+
+	v, err := Scan2[T](row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return v, nil
 }
 
 func ScanMany2[T any](ctx context.Context, q Querier, sql string, args ...any) ([]*T, error) {

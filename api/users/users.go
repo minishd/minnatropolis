@@ -79,8 +79,7 @@ func usersToBlockList(users []*datastore.User) []blocklistEntry {
 // (Needs authentication)
 func (h *Handlers) HandleBlockList(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
 	// Look up user's block list
-	ctx := r.Context()
-	users, err := h.ds.GetBlockedUsers(ctx, session.ForUser.ID)
+	users, err := h.ds.GetBlockedUsers(session.ForUser.ID)
 	if err != nil {
 		return
 	}
@@ -106,8 +105,7 @@ func (h *Handlers) HandleBlockListAdd(w http.ResponseWriter, r *http.Request, se
 	}
 
 	// Try to add blocked user
-	ctx := r.Context()
-	users, err := h.ds.AddBlockRelation(ctx, session.ForUser.ID, req.UserID)
+	users, err := h.ds.AddBlockRelation(session.ForUser.ID, req.UserID)
 	switch err {
 	case datastore.ErrNotUnique:
 		err = web.ErrAlreadyBlocked
@@ -143,8 +141,7 @@ func (h *Handlers) HandleBlockListRemove(w http.ResponseWriter, r *http.Request,
 	}
 
 	// Try to remove blocked user
-	ctx := r.Context()
-	users, err := h.ds.RemoveBlockRelation(ctx, session.ForUser.ID, req.UserID)
+	users, err := h.ds.RemoveBlockRelation(session.ForUser.ID, req.UserID)
 	if err == datastore.ErrNotFound {
 		err = web.ErrNotBlocked
 		return

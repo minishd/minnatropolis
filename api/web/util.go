@@ -86,8 +86,7 @@ func GetAuth(ds *datastore.DataStore, r *http.Request) (st *datastore.SessionTok
 	}
 
 	// Look up token
-	ctx := r.Context()
-	st, err = ds.LookupSessionToken(ctx, token)
+	st, err = ds.LookupSessionToken(token)
 	if err != nil {
 		return
 	}

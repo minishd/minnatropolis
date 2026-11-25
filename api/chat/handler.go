@@ -54,8 +54,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	}
 
 	// Look up blocklist
-	ctx := r.Context()
-	blocked, err := h.ds.GetBlockedUsers(ctx, st.ForUser.ID)
+	blocked, err := h.ds.GetBlockedUsers(st.ForUser.ID)
 	if err != nil {
 		log.Println("blocklist lookup failed:", err)
 		return false
@@ -66,7 +65,7 @@ func (h *Handler) Authorize(r *http.Request, session gws.SessionStorage) bool {
 	}
 
 	// Look up party
-	party, err := h.ds.GetUserParty(ctx, st.ForUser.ID)
+	party, err := h.ds.GetUserParty(st.ForUser.ID)
 	if err != nil {
 		log.Println("party lookup failed:", err)
 		return false

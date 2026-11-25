@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"crypto/rand"
 	"net/http"
 	"time"
@@ -41,12 +40,12 @@ func sendCookieOK(w http.ResponseWriter, token string) {
 
 // Helper function that generates a session token for a user
 // and returns its string value
-func (h *Handlers) issueSessionToken(ctx context.Context, forUser uuid.UUID) (token string, err error) {
+func (h *Handlers) issueSessionToken(forUser uuid.UUID) (token string, err error) {
 	// Generate token string
 	// then try to add it to DB
 	token = rand.Text()
 	expiresAt := sessionTokenExpiryNow()
-	err = h.ds.CreateSessionToken(ctx, forUser, token, expiresAt)
+	err = h.ds.CreateSessionToken(forUser, token, expiresAt)
 	if err != nil {
 		return
 	}
@@ -65,9 +64,8 @@ func (h *Handlers) HandleRegister(w http.ResponseWriter, r *http.Request) (err e
 	}
 
 	// Look up punishment for this IP
-	ctx := r.Context()
 	ip := web.GetIP(r)
-	punishment, err := h.ds.GetActivePunishmentForIP(ctx, ip)
+	punishment, err := h.ds.GetActivePunishmentForIP(ip)
 	if err != nil {
 		return
 	}
@@ -104,7 +102,7 @@ func (h *Handlers) HandleRegister(w http.ResponseWriter, r *http.Request) (err e
 	}
 
 	// Try to create in DB
-	user, err := h.ds.CreateUser(ctx, req.Username, pwHash, datastore.PwHashArgon2id, currentPunishID)
+	user, err := h.ds.CreateUser(req.Username, pwHash, datastore.PwHashArgon2id, currentPunishID)
 	if err == datastore.ErrNotUnique {
 		err = web.ErrUsernameTaken
 		return
@@ -119,7 +117,7 @@ func (h *Handlers) HandleRegister(w http.ResponseWriter, r *http.Request) (err e
 
 	// Return a session token
 	// for the new account
-	token, err := h.issueSessionToken(ctx, user.ID)
+	token, err := h.issueSessionToken(user.ID)
 	if err != nil {
 		return
 	}
@@ -143,8 +141,7 @@ func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) (err erro
 	}
 
 	// Look up user in database
-	ctx := r.Context()
-	user, err := h.ds.GetUserByUsername(ctx, req.Username)
+	user, err := h.ds.GetUserByUsername(req.Username)
 	if err != nil {
 		return
 	}
@@ -164,7 +161,7 @@ func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) (err erro
 	}
 
 	// It does match so give them a session token
-	token, err := h.issueSessionToken(ctx, user.ID)
+	token, err := h.issueSessionToken(user.ID)
 	if err != nil {
 		return
 	}
@@ -176,8 +173,7 @@ func (h *Handlers) HandleLogin(w http.ResponseWriter, r *http.Request) (err erro
 // Handles logging out of accounts
 // (Needs authentication)
 func (h *Handlers) HandleLogout(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
-	ctx := r.Context()
-	err = h.ds.DeleteSessionToken(ctx, session.ID)
+	err = h.ds.DeleteSessionToken(session.ID)
 	if err != nil {
 		return
 	}
@@ -188,8 +184,7 @@ func (h *Handlers) HandleLogout(w http.ResponseWriter, r *http.Request, session 
 
 // Signs out all other sessions besides the current
 func (h *Handlers) HandleLogoutOthers(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
-	ctx := r.Context()
-	err = h.ds.ClearOtherSessionTokensForUser(ctx, session.ForUser.ID, session.ID)
+	err = h.ds.ClearOtherSessionTokensForUser(session.ForUser.ID, session.ID)
 	if err != nil {
 		return
 	}
@@ -200,9 +195,8 @@ func (h *Handlers) HandleLogoutOthers(w http.ResponseWriter, r *http.Request, se
 
 // Renews the current session token
 func (h *Handlers) HandleRenew(w http.ResponseWriter, r *http.Request, session *datastore.SessionToken) (err error) {
-	ctx := r.Context()
 	expiresAt := sessionTokenExpiryNow()
-	err = h.ds.UpdateSessionTokenExpiry(ctx, session.ID, expiresAt)
+	err = h.ds.UpdateSessionTokenExpiry(session.ID, expiresAt)
 	if err != nil {
 		return
 	}

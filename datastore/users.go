@@ -2,7 +2,6 @@ package datastore
 
 import (
 	"context"
-	"errors"
 	"net/netip"
 	"time"
 
@@ -112,10 +111,11 @@ type NewUser struct {
 	Role        Role        `scan2:"8"`
 }
 
-func (ds *DataStore) CreateUser(ctx context.Context, username, pwHash string, pwHashType PwHashType,
+func (ds *DataStore) CreateUser(username, pwHash string, pwHashType PwHashType,
 	currentPunishID *uuid.UUID) (*NewUser, error) {
 	// There isn't an easy way to fetch punishment data in an INSERT clause
 	// that I know of, so we return a partial user
+	ctx := context.Background()
 	newUser, err := scan2.ScanOne2[NewUser](ctx, ds.pool, sqlCreateUser, username, pwHashType, pwHash, currentPunishID)
 
 	if err != nil {
@@ -133,26 +133,13 @@ func (ds *DataStore) CreateUser(ctx context.Context, username, pwHash string, pw
 }
 
 const sqlGetUserByUsername = `
-SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_visit_at, u.last_seen_ip, u.mod_note, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
-FROM users u
-LEFT JOIN punishments p ON p.id = u.current_punishment
-                       AND p.is_disabled IS FALSE
-                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+SELECT uf.*
+FROM users_full uf
 WHERE u.username = $1`
 
-func (ds *DataStore) GetUserByUsername(ctx context.Context, username string) (*User, error) {
-	user, err := scan2.ScanOne2[User](ctx, ds.pool, sqlGetUserByUsername, username)
-
-	if err != nil {
-		// Did we not find an account?
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	return user, nil
+func (ds *DataStore) GetUserByUsername(username string) (*User, error) {
+	ctx := context.Background()
+	return scan2.ScanOne2[User](ctx, ds.pool, sqlGetUserByUsername, username)
 }
 
 const sqlUpdateUserLastVisit = `
@@ -161,18 +148,16 @@ SET last_visit_at = $2,
     last_seen_ip  = $3
 WHERE id = $1`
 
-func (ds *DataStore) UpdateUserLastVisit(ctx context.Context, id uuid.UUID, visitTime time.Time, visitIP netip.Addr) error {
+func (ds *DataStore) UpdateUserLastVisit(id uuid.UUID, visitTime time.Time, visitIP netip.Addr) error {
+	ctx := context.Background()
 	_, err := ds.pool.Exec(ctx, sqlUpdateUserLastVisit, id, visitTime, visitIP)
 	return err
 }
 
 const sqlGetUserBlockList = `
-SELECT u.id, u.created_at, u.username, u.pw_hash_type, u.pw_hash, u.last_visit_at, u.last_seen_ip, u.mod_note, u.role, p.id, p.created_at, p.punishment_type, p.is_ip_enforced, p.is_disabled, p.expires_at, p.reason
+SELECT uf.*
 FROM block_relations br
-     JOIN users u       ON u.id = br.blocked_user
-LEFT JOIN punishments p ON p.id = u.current_punishment
-                       AND p.is_disabled IS FALSE
-                       AND (p.expires_at IS NULL OR CURRENT_TIMESTAMP < p.expires_at)
+JOIN users_full uf ON uf.id = br.blocked_user
 WHERE br.origin_user = $1`
 
 func getUserBlockList(ctx context.Context, tx scan2.Querier, originUser uuid.UUID) ([]*User, error) {
@@ -184,7 +169,8 @@ func getUserBlockList(ctx context.Context, tx scan2.Querier, originUser uuid.UUI
 	return users, nil
 }
 
-func (ds *DataStore) GetBlockedUsers(ctx context.Context, originUser uuid.UUID) ([]*User, error) {
+func (ds *DataStore) GetBlockedUsers(originUser uuid.UUID) ([]*User, error) {
+	ctx := context.Background()
 	return getUserBlockList(ctx, ds.pool, originUser)
 }
 
@@ -193,9 +179,8 @@ INSERT INTO block_relations (origin_user, blocked_user)
 VALUES ($1, $2)`
 
 func insertBlockRelation(ctx context.Context, tx pgx.Tx, originUser, blockedUser uuid.UUID) error {
-	_, err := tx.Exec(ctx, sqlInsertBlockRelation, originUser, blockedUser)
-
-	if err != nil {
+	// Insert the relation
+	if _, err := tx.Exec(ctx, sqlInsertBlockRelation, originUser, blockedUser); err != nil {
 		// We require each relation to be unique,
 		// so check for unique violation error.
 		// Also bad user IDs.
@@ -210,7 +195,9 @@ func insertBlockRelation(ctx context.Context, tx pgx.Tx, originUser, blockedUser
 	return nil
 }
 
-func (ds *DataStore) AddBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) ([]*User, error) {
+func (ds *DataStore) AddBlockRelation(originUser, blockedUser uuid.UUID) ([]*User, error) {
+	ctx := context.Background()
+
 	tx, err := ds.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -243,19 +230,12 @@ WHERE origin_user = $1
   AND blocked_user = $2`
 
 func deleteBlockRelation(ctx context.Context, tx pgx.Tx, originUser, blockedUser uuid.UUID) error {
-	result, err := tx.Exec(ctx, sqlDeleteBlockRelation, originUser, blockedUser)
-	if err != nil {
-		return err
-	}
-	if result.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-
-	// It was deleted
-	return nil
+	return mustOneFound(tx.Exec(ctx, sqlDeleteBlockRelation, originUser, blockedUser))
 }
 
-func (ds *DataStore) RemoveBlockRelation(ctx context.Context, originUser, blockedUser uuid.UUID) ([]*User, error) {
+func (ds *DataStore) RemoveBlockRelation(originUser, blockedUser uuid.UUID) ([]*User, error) {
+	ctx := context.Background()
+
 	tx, err := ds.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
